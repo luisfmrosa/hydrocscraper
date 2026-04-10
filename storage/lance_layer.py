@@ -98,12 +98,24 @@ def write(records: list[ProductionRecord], mode: str = "append") -> lancedb.tabl
 def open_table() -> lancedb.table.Table:
     """Open the Lance table for reading."""
     db = _connect()
-    if TABLE_NAME not in db.list_tables():
+    tables = db.list_tables()
+    table_names = tables.tables if hasattr(tables, "tables") else list(tables)
+    if TABLE_NAME not in table_names:
         raise FileNotFoundError(
             f"Lance table '{TABLE_NAME}' not found in {LAKE_ROOT}. "
             "Run --mode convert first."
         )
     return db.open_table(TABLE_NAME)
+
+
+def duckdb_conn() -> "duckdb.DuckDBPyConnection":
+    """Return a DuckDB connection with the production table registered as 'production'."""
+    import duckdb
+
+    arrow = open_table().to_arrow()
+    con = duckdb.connect()
+    con.register("production", arrow)
+    return con
 
 
 def dataset_info() -> dict:
