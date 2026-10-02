@@ -9,19 +9,23 @@ Each scraper must:
 
 The base class provides:
   - a shared httpx.Client
-  - `download_file()` convenience wrapper (streamed, retried)
-  - watermark read/write helpers
-  - `latest_raw_file()` — resolves the most recent raw file for convert mode
+  - `fetch_to_temp()` — streamed, retried download into a temporary directory
+  - `store_raw()` — upload a downloaded file to the Raw bucket
+  - watermark read/write helpers (hook.metadata.watermark)
   - standard logging
 """
 
 import logging
+import tempfile
 from abc import ABC, abstractmethod
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 import httpx
 
-from storage.raw import latest_full_dir, read_watermark, write_watermark
+from storage.raw import upload_raw
+from storage.watermark import read_watermark, write_watermark
 from utils.http import download_file as _download_file
 
 
@@ -52,28 +56,27 @@ class BaseScraper(ABC):
     # Helpers available to subclasses
     # ------------------------------------------------------------------
 
-    def download_file(self, url: str, dest: Path, **request_kwargs) -> None:
-        """Stream *url* to *dest* with retries. See utils.http for details."""
-        _download_file(self.client, url, dest, **request_kwargs)
+    @contextmanager
+    def fetch_to_temp(self, url: str, filename: str, **request_kwargs) -> Iterator[Path]:
+        """Download *url* to a temporary file named *filename*.
 
-    def latest_raw_files(self) -> list[Path]:
-        """Return a list of raw files from the most recent full-load run.
-
-        Subclasses may override this if their raw output is more complex
-        (e.g. multiple files per run). The default looks in the latest
-        full/ snapshot directory.
+        The file (and its directory) is removed when the context exits, so
+        call store_raw() inside the `with` block to keep it.
         """
-        d = latest_full_dir(self.source_id)
-        if d is None or not d.exists():
-            return []
-        return [p for p in d.iterdir() if p.is_file()]
+        with tempfile.TemporaryDirectory(prefix=f"hydroc_{self.source_id}_") as tmp:
+            dest = Path(tmp) / filename
+            _download_file(self.client, url, dest, **request_kwargs)
+            yield dest
 
-    @property
-    def watermark(self) -> dict:
-        return read_watermark(self.source_id)
+    def store_raw(self, path: Path, dataset: str, period: str | None = None) -> str:
+        """Upload *path* to the Raw bucket; return its object key."""
+        return upload_raw(path, self.source_id, dataset, period=period)
 
-    def save_watermark(self, updates: dict) -> None:
-        write_watermark(self.source_id, updates)
+    def watermark(self, dataset: str) -> dict:
+        return read_watermark(self.source_id, dataset)
+
+    def save_watermark(self, dataset: str, **fields) -> None:
+        write_watermark(self.source_id, dataset, **fields)
 
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__} source_id={self.source_id!r}>"

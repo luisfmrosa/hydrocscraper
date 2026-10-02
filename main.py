@@ -7,17 +7,18 @@ Usage:
     python main.py --mode full --sources npd
     python main.py --mode incremental
 
-    # Convert latest raw files to Lance (Layer 1)
-    python main.py --mode convert
-    python main.py --mode convert --sources npd --lance-mode overwrite
+    # Snapshot the known-sources catalog to the Raw layer
+    python main.py --mode discover
+    python main.py --mode discover --seed discovery/known_sources.json
 
-    # Show Lance dataset info
-    python main.py --mode info
+DuckLake objects are created by the DuckDB server at startup (sql/ddl/).
 """
 
 import importlib
 import logging
+import json
 import sys
+from pathlib import Path
 
 import click
 
@@ -51,12 +52,11 @@ def _load_scraper(source_id: str, client):
 @click.option(
     "--mode",
     required=True,
-    type=click.Choice(["full", "incremental", "convert", "info"], case_sensitive=False),
+    type=click.Choice(["full", "incremental", "discover"], case_sensitive=False),
     help=(
         "full: download complete history. "
         "incremental: download only new periods. "
-        "convert: parse latest raw files and write to Lance. "
-        "info: print Lance dataset summary."
+        "discover: write a new known-sources snapshot to the Raw layer."
     ),
 )
 @click.option(
@@ -70,19 +70,18 @@ def _load_scraper(source_id: str, client):
     ),
 )
 @click.option(
-    "--lance-mode",
-    default="append",
-    type=click.Choice(["overwrite", "append"], case_sensitive=False),
-    show_default=True,
-    help="Lance write mode used by --mode convert.",
+    "--seed",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=None,
+    help="discover only: import known sources from a local JSON file.",
 )
 @click.option("--verbose", "-v", is_flag=True, default=False, help="Debug logging.")
-def main(mode: str, sources: tuple[str, ...], lance_mode: str, verbose: bool) -> None:
+def main(mode: str, sources: tuple[str, ...], seed: Path | None, verbose: bool) -> None:
     _setup_logging(verbose)
     logger = logging.getLogger("hydrocscraper.main")
 
-    if mode == "info":
-        _cmd_info(logger)
+    if mode == "discover":
+        _cmd_discover(seed, logger)
         return
 
     targets = list(sources) if sources else list(SCRAPER_REGISTRY)
@@ -99,8 +98,6 @@ def main(mode: str, sources: tuple[str, ...], lance_mode: str, verbose: bool) ->
                     scraper.full_load()
                 elif mode == "incremental":
                     scraper.incremental_load()
-                elif mode == "convert":
-                    _cmd_convert(scraper, lance_mode, logger)
 
             except Exception as exc:
                 logger.error("FAILED %s: %s", source_id, exc, exc_info=True)
@@ -117,47 +114,22 @@ def main(mode: str, sources: tuple[str, ...], lance_mode: str, verbose: bool) ->
 # Sub-command implementations
 # ---------------------------------------------------------------------------
 
-def _cmd_convert(scraper, lance_mode: str, logger: logging.Logger) -> None:
-    from storage.lance_layer import write
+def _cmd_discover(seed: Path | None, logger: logging.Logger) -> None:
+    from discovery.store import latest_known_sources, save_known_sources
 
-    raw_files = scraper.latest_raw_files()
-    if not raw_files:
-        logger.warning(
-            "%s: no raw files found. Run --mode full first.", scraper.source_id
-        )
-        return
+    if seed is not None:
+        records = json.loads(seed.read_text(encoding="utf-8"))
+        logger.info("Seeding %d known sources from %s", len(records), seed)
+    else:
+        records = latest_known_sources()
+        if not records:
+            logger.error("No known-sources snapshot found. Run with --seed first.")
+            sys.exit(1)
+        # The web-search discovery flow (docs/discovery.md) is not implemented
+        # yet; this snapshots the current catalog.
 
-    all_records: list = []
-    for path in raw_files:
-        logger.info("Parsing %s", path)
-        records = scraper.parse(path)
-        logger.info("  -> %d records", len(records))
-        all_records.extend(records)
-
-    if not all_records:
-        logger.warning("%s: parse() returned 0 records.", scraper.source_id)
-        return
-
-    logger.info(
-        "Writing %d records to Lance (lance_mode=%s) ...", len(all_records), lance_mode
-    )
-    ds = write(all_records, mode=lance_mode)
-    logger.info("Lance write complete. Total rows: %d", ds.count_rows())
-
-
-def _cmd_info(logger: logging.Logger) -> None:
-    try:
-        from storage.lance_layer import dataset_info
-        info = dataset_info()
-    except FileNotFoundError as exc:
-        logger.error(str(exc))
-        sys.exit(1)
-
-    print(f"\nLance dataset: {info['path']}")
-    print(f"  Rows      : {info['rows']:,}")
-    print(f"  Versions  : {info['versions']}")
-    print(f"  Latest v  : {info['latest_version']}")
-    print(f"  Columns   : {', '.join(info['columns'])}\n")
+    key = save_known_sources(records)
+    logger.info("Known sources snapshot written: %s (%d records)", key, len(records))
 
 
 if __name__ == "__main__":

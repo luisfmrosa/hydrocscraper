@@ -1,0 +1,18 @@
+# Copy to local.yml (git-ignored) and fill in for your environment.
+
+# Incus remote name, as listed by `incus remote list` on the controller
+ansible_incus_remote: my-incus-remote
+
+# Host name in the Incus server certificate (see its subjectAltName); the
+# containers reach the bucket endpoint as https://<incus_host_name>:8555.
+# Its certificate is read from ~/.config/incus/servercerts/<incus_host_name>.crt
+incus_host_name: my-incus-host
+
+# OpenTofu executable used to read the tofu outputs (default: tofu).
+# From WSL with OpenTofu installed only on Windows: tofu.exe
+# tofu_bin: tofu.exe
+
+# Repository cloned on hydroc-app
+app_repo: https://github.com/<owner>/hydrocscraper.git
+# Branch or tag deployed on hydroc-app (default: main)
+# app_version: main

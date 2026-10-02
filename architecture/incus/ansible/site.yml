@@ -1,0 +1,33 @@
+- name: Bootstrap Python on fresh containers
+  hosts: all
+  gather_facts: false
+  tasks:
+    # Without ansible_incus_remote the incus plugin silently targets the local Incus.
+    - name: Check environment settings (group_vars/all/local.yml)
+      ansible.builtin.assert:
+        that:
+          - ansible_incus_remote is defined
+          - incus_host_name is defined
+          - app_repo is defined
+        fail_msg: Copy group_vars/all/local.yml.example to local.yml and fill it in.
+      run_once: true
+
+    - name: Install python3
+      ansible.builtin.raw: test -x /usr/bin/python3 || (apt-get update && apt-get install -y python3)
+      changed_when: false
+
+- name: Common configuration
+  hosts: all
+  roles: [common]
+
+- name: Postgres (DuckLake catalogs)
+  hosts: postgres
+  roles: [postgres]
+
+- name: DuckDB quack server
+  hosts: duckdb_server
+  roles: [duckdb_server]
+
+- name: hydrocscraper app
+  hosts: app
+  roles: [app]

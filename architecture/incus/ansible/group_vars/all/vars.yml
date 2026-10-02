@@ -1,0 +1,38 @@
+# Non-secret settings shared by every deployment.
+# Environment-specific values (Incus remote/host, repository URL): local.yml
+# Secrets: vault.yml
+# Both are git-ignored; see the .example files next to them.
+
+# Infrastructure facts come from the OpenTofu outputs (bucket keys stay out of the repo).
+# The pipe lookup runs in the playbook directory, so a relative -chdir also
+# works for a Windows tofu.exe called from WSL (it cannot read /mnt/c paths).
+# tofu_bin may be set in local.yml. Don't define it here: files in group_vars/all
+# load alphabetically, so vars.yml would override local.yml.
+tofu: "{{ lookup('ansible.builtin.pipe', (tofu_bin | default('tofu')) ~ ' -chdir=../tofu output -json') | from_json }}"
+
+gateway_ip: "{{ tofu.gateway.value }}"
+instance_ips: "{{ tofu.instance_ips.value }}"
+bucket_keys: "{{ tofu.bucket_keys.value }}"
+quack_port: "{{ tofu.quack_port.value }}"
+
+# Incus bucket endpoint. Its TLS certificate is issued for the Incus host name
+# (incus_host_name, from local.yml), which is mapped to the bridge gateway
+# inside the containers.
+bucket_endpoint_port: 8555
+bucket_endpoint: "{{ incus_host_name }}:{{ bucket_endpoint_port }}"
+# Incus server certificate on the Ansible controller
+incus_server_cert: "~/.config/incus/servercerts/{{ incus_host_name }}.crt"
+
+layers: [raw, lake, library, dwh, hook]
+ducklake_layers: [lake, library, dwh, hook]
+
+postgres_version: 15
+# DuckDB 2.0 alpha build for the quack server, installed with
+# https://install.duckdb.org (DUCKDB_STAGED=<commit>/<version>). It must be the
+# exact build of `duckdb==` in requirements.txt: different dev builds cannot
+# talk to each other over quack. Needs an AVX2 CPU (the homelab J5005 has none).
+duckdb_staged: "ca15f79c32/v2.0.0-alpha43385"
+duckdb_cli: "/opt/duckdb/.duckdb/cli/{{ duckdb_staged.split('/')[1] | regex_replace('^v', '') }}/duckdb"
+
+# app_repo and app_version (branch/tag, default main) are set in local.yml
+app_dir: /opt/hydrocscraper

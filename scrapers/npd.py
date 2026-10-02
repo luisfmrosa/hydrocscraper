@@ -10,8 +10,8 @@ Licence: NLOD (Norwegian Licence for Open Government Data)
 
 NPD publishes a single CSV containing the complete production history for all
 fields. There is no incremental API endpoint, so both full and incremental
-modes download the same file. Incremental mode skips the download if the
-latest period in the file matches the watermark.
+modes download the same file. Incremental mode only stores the file in the
+Raw bucket if its latest period differs from the watermark.
 
 CSV columns (English locale):
   prfInformationCarrier  — NPDID of the field
@@ -36,7 +36,6 @@ import httpx
 
 from models.production import Commodity, ProductionRecord
 from scrapers.base import BaseScraper
-from storage.raw import full_dir, incremental_dir
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +51,8 @@ _CSV_URL = (
     "&Top100=false"
 )
 
-_FILENAME = "field_production_monthly.csv"
+_DATASET = "field_production_monthly"
+_FILENAME = f"{_DATASET}.csv"
 
 # Map CSV column -> (commodity constant, unit)
 _COMMODITY_COLS: list[tuple[str, str, str]] = [
@@ -69,51 +69,45 @@ class NPDScraper(BaseScraper):
     source_id = "npd"
 
     def full_load(self) -> None:
-        dest_dir = full_dir(self.source_id)
-        dest = dest_dir / _FILENAME
         self.logger.info("Full load: downloading NPD field production CSV.")
-        self.download_file(_CSV_URL, dest)
-        latest_period = _latest_period_in_file(dest)
-        self.save_watermark({
-            "last_full_run": date.today().isoformat(),
-            "last_period_fetched": latest_period,
-            "status": "ok",
-        })
+        with self.fetch_to_temp(_CSV_URL, _FILENAME) as path:
+            latest_period = _latest_period_in_file(path)
+            key = self.store_raw(path, _DATASET)
+        self.save_watermark(
+            _DATASET,
+            load_mode="full",
+            last_period_fetched=latest_period,
+            status="ok",
+            raw_file=key,
+        )
         self.logger.info("Full load complete. Latest period in file: %s", latest_period)
 
     def incremental_load(self) -> None:
-        wm = self.watermark
-        last_period = wm.get("last_period_fetched")
+        last_period = self.watermark(_DATASET).get("last_period_fetched")
 
-        # Download to a temp incremental path (we keep it for auditability)
-        # NPD always publishes the full dataset; we use the watermark to detect
+        # NPD always publishes the full dataset; the watermark tells us
         # whether new data has actually been added.
-        today_period = date.today().strftime("%Y-%m")
-        dest_dir = incremental_dir(self.source_id, today_period)
-        dest = dest_dir / _FILENAME
-
         self.logger.info("Incremental load: downloading NPD field production CSV.")
-        self.download_file(_CSV_URL, dest)
-        latest_period = _latest_period_in_file(dest)
-
-        if latest_period == last_period:
-            self.logger.info(
-                "No new data (latest period still %s). Removing redundant download.",
-                latest_period,
-            )
-            dest.unlink()
-            if not any(dest_dir.iterdir()):
-                dest_dir.rmdir()
-            return
+        with self.fetch_to_temp(_CSV_URL, _FILENAME) as path:
+            latest_period = _latest_period_in_file(path)
+            if latest_period == last_period:
+                self.logger.info(
+                    "No new data (latest period still %s). Nothing stored.",
+                    latest_period,
+                )
+                return
+            key = self.store_raw(path, _DATASET)
 
         self.logger.info(
             "New data detected: %s -> %s", last_period or "never", latest_period
         )
-        self.save_watermark({
-            "last_incremental_run": date.today().isoformat(),
-            "last_period_fetched": latest_period,
-            "status": "ok",
-        })
+        self.save_watermark(
+            _DATASET,
+            load_mode="incremental",
+            last_period_fetched=latest_period,
+            status="ok",
+            raw_file=key,
+        )
 
     def parse(self, csv_path: Path) -> list[ProductionRecord]:
         """Parse a downloaded NPD CSV into ProductionRecord objects.
@@ -122,7 +116,7 @@ class NPDScraper(BaseScraper):
         Rows with all-zero production are included (they are valid zero months).
         """
         records: list[ProductionRecord] = []
-        source_file = str(csv_path.relative_to(csv_path.parents[4]))
+        source_file = csv_path.name
 
         with csv_path.open(encoding="utf-8-sig", newline="") as fh:
             reader = csv.DictReader(fh)

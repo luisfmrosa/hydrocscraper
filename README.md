@@ -5,16 +5,16 @@ A modular pipeline that collects official hydrocarbon production data from natio
 ## Overview
 
 ```
-Scrapers (per source)
-      │
+Scrapers (per source) ── hydroc-app
+      │  boto3
       ▼
-Layer 0 — Raw files   ./data/      (exact as received, git-ignored)
+Raw      s3://hydroc-raw/<source>/<dataset>/year_month=<YYYY-MM>/<file>_<YYYYMMDD_HHmm>
       │
-      ▼
-Layer 1 — Clean data  ./lake/      (Lance columnar format, git-ignored)
+      ▼  (DuckDB server hydroc-duckdb, quack protocol, DuckLake catalogs in Postgres)
+Lake → Library (frame / latest) → DWH (supply)        Hook (metadata / raw_views)
 ```
 
-Data flows from multiple official sources through source-specific scrapers, lands as raw files, and is then parsed into a unified production schema queryable via Lance.
+The stack runs on Incus: three containers (Postgres, a DuckDB quack server and the app) and one S3 bucket per layer. See [docs/architecture.md](docs/architecture.md).
 
 ## Data Sources
 
@@ -43,98 +43,75 @@ Data flows from multiple official sources through source-specific scrapers, land
 | Colombia | ANH | Field | Fair |
 | Argentina | Secretaría de Energía | Field / Well | Fair |
 
-## Installation
+## Deployment
+
+The stack can run in two setups, each in its own folder under `architecture/`. Both use the same code and the same `sql/ddl` scripts. DuckDB 2.0.0-dev needs a CPU with AVX2 in either setup.
+
+### Docker (local / test)
+
+Runs RustFS (S3), Postgres, the DuckDB quack server and the app with Docker Compose. Full instructions: [architecture/docker/README.md](architecture/docker/README.md).
 
 ```bash
-pip install -r requirements.txt
+cd architecture/docker
+cp .env.example .env                                   # set every value
+docker compose up -d --build
+docker compose run --rm app python main.py --mode discover --seed discovery/known_sources.json
+docker compose run --rm app python main.py --mode full
 ```
 
-**Dependencies:** `httpx`, `tenacity`, `click`, `pandas`, `openpyxl`, `pyarrow`, `lancedb`
+### Incus
+
+Prerequisites:
+- The Incus client, with a remote configured for your Incus server.
+- OpenTofu.
+- Ansible, run from WSL or Linux, with the collections from `architecture/incus/ansible/requirements.yml`.
+
+```bash
+# 1. Infrastructure: bridge, project, buckets and keys, containers
+cd architecture/incus/tofu
+cp terraform.tfvars.example terraform.tfvars        # adjust
+tofu init && tofu apply
+
+# 2. Configuration: Postgres catalogs, DuckDB quack server, app
+cd ../ansible
+ansible-galaxy collection install -r requirements.yml
+cp group_vars/all/vault.yml.example group_vars/all/vault.yml   # fill in
+cp group_vars/all/local.yml.example group_vars/all/local.yml   # Incus remote/host, repo URL
+ansible-playbook -i inventory.yml site.yml   # -i: under WSL /mnt/c, ansible.cfg is ignored
+
+# 3. First loads, from hydroc-app (/opt/hydrocscraper)
+.venv/bin/python main.py --mode discover --seed discovery/known_sources.json
+.venv/bin/python main.py --mode full
+
+# 4. Restart the server so the raw views get created over the new files
+incus exec hydroc-duckdb --project hydroc -- systemctl restart duckdb-quack
+```
+
+Local development: `pip install -r requirements.txt`, then copy `.env.example` to `.env`. Tests: `pytest`.
 
 ## Usage
 
 ```bash
-# First-time full download (all registered sources)
+# Full download (all registered sources, or a subset)
 python main.py --mode full
-
-# Full download for specific sources only
 python main.py --mode full --sources npd
 
-# Incremental update — fetches only periods not yet captured
+# Incremental update: stores a file only when new periods appear
 python main.py --mode incremental
 
-# Parse latest raw files and write to Lance (Layer 1)
-python main.py --mode convert
-python main.py --mode convert --sources npd --lance-mode overwrite
-
-# Show Lance dataset summary
-python main.py --mode info
+# Write a new known-sources snapshot to s3://hydroc-raw/metadata/known_sources/
+python main.py --mode discover
+python main.py --mode discover --seed discovery/known_sources.json   # one-time import
 
 # Verbose / debug logging
 python main.py --mode full -v
 ```
 
-## Project Structure
-
-```
-hydrocscraper/
-├── main.py              # CLI entry point and orchestrator
-├── config.py            # Source registry, paths, settings
-├── requirements.txt
-│
-├── scrapers/
-│   ├── base.py          # Abstract BaseScraper class
-│   └── npd.py           # Norway Sokkeldirektoratet (implemented)
-│
-├── models/
-│   └── production.py    # ProductionRecord schema
-│
-├── storage/
-│   ├── raw.py           # File I/O, watermarks, path helpers
-│   └── lance_layer.py   # Lance read/write layer
-│
-├── utils/
-│   └── http.py          # HTTP client, retries, rate limiting
-│
-├── discovery/           # Source discovery tooling
-│   ├── known_sources.json
-│   └── reports/
-│
-├── docs/
-│   ├── data_sources.md  # Full source catalog with URLs
-│   ├── architecture.md  # Architecture and data layout reference
-│   └── discovery.md     # Discovery feature documentation
-│
-├── data/                # Raw downloads — git-ignored
-└── lake/                # Lance tables — git-ignored
-```
-
-## Load Modes
-
-**`full`** — Downloads the complete available history. Use for first-time setup or after adding a new source. Saves to `./data/{source}/full/YYYY-MM-DD/`.
-
-**`incremental`** — Downloads only periods not yet captured, using a `.watermark.json` file in each source folder. Saves to `./data/{source}/incremental/YYYY-MM/`.
-
-**`convert`** — Parses the latest raw files for each source and writes `ProductionRecord` rows to `./lake/production.lance`. Supports `append` (default) and `overwrite` write modes.
-
-## Unified Schema (Layer 1)
-
-| Column | Type | Description |
-|--------|------|-------------|
-| `source` | string | Source identifier (e.g. `npd`, `jodi_oil`) |
-| `country_iso3` | string | ISO 3166-1 alpha-3 country code |
-| `region` | string | Sub-national region, if available |
-| `field_name` | string | Field name, if available |
-| `well_id` | string | Well identifier, if available |
-| `period` | date | First day of the reference month |
-| `commodity` | string | `crude_oil`, `natural_gas`, `ngl`, `condensate` |
-| `value` | float64 | Production volume |
-| `unit` | string | Unit of measure (e.g. `kb/d`, `mcm/month`) |
-| `scraped_at` | timestamp | When the raw file was downloaded |
-| `source_file` | string | Relative path to the originating raw file |
+DuckLake schemas and tables are not created by the app. The DuckDB server applies `sql/ddl/` every time it starts.
 
 ## Adding a New Scraper
 
-1. Create `scrapers/{source_id}.py` inheriting from `scrapers.base.BaseScraper`
-2. Implement `full_load()`, `incremental_load()`, `latest_raw_files()`, and `parse()`
-3. Register the class in `config.py` under `SCRAPER_REGISTRY`
+1. Create `scrapers/{source_id}.py`, inheriting from `scrapers.base.BaseScraper`.
+2. Implement `full_load()`, `incremental_load()` and `parse()`. Use `fetch_to_temp()`, `store_raw(path, dataset)` and `save_watermark(dataset, ...)`.
+3. Register the class in `config.py` under `SCRAPER_REGISTRY`.
+4. Optionally add a view in `sql/ddl/raw_views/` and a `.read` line in `sql/ddl/init_server.sql`.

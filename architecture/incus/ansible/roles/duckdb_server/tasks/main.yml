@@ -1,0 +1,65 @@
+- name: Create duckdb user
+  ansible.builtin.user:
+    name: duckdb
+    system: true
+    home: /opt/duckdb
+    shell: /usr/sbin/nologin
+
+# Official install script, pinned to one staged build (DUCKDB_VERSION=alpha
+# would follow the latest alpha and break compatibility with the app).
+# Installs to $HOME/.duckdb/cli/<version>/duckdb.
+- name: Install DuckDB CLI {{ duckdb_staged }}
+  ansible.builtin.shell: >-
+    curl -fsSL https://install.duckdb.org |
+    HOME=/opt/duckdb DUCKDB_STAGED={{ duckdb_staged }} sh
+  args:
+    creates: "{{ duckdb_cli }}"
+  notify: Restart duckdb-quack
+
+- name: DuckDB CLI owned by the duckdb user
+  ansible.builtin.file:
+    path: /opt/duckdb/.duckdb
+    owner: duckdb
+    recurse: true
+
+- name: Copy startup DDL (sql/ddl)
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../../sql/ddl/"
+    dest: /opt/duckdb/ddl/
+    owner: duckdb
+    mode: "0644"
+  notify: Restart duckdb-quack
+
+- name: Render secrets
+  ansible.builtin.template:
+    src: secrets.sql.j2
+    dest: /opt/duckdb/secrets.sql
+    owner: duckdb
+    mode: "0600"
+  no_log: true
+  notify: Restart duckdb-quack
+
+- name: Install systemd unit
+  ansible.builtin.template:
+    src: duckdb-quack.service.j2
+    dest: /etc/systemd/system/duckdb-quack.service
+    mode: "0644"
+  notify: Restart duckdb-quack
+
+- name: Enable duckdb-quack
+  ansible.builtin.systemd:
+    name: duckdb-quack
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Apply pending restarts
+  ansible.builtin.meta: flush_handlers
+
+# The keep-alive pipe holds the CLI open even if quack_serve fails, so the unit
+# stays "active": check the port itself.
+- name: Wait for the quack server to listen
+  ansible.builtin.wait_for:
+    host: 127.0.0.1
+    port: "{{ quack_port }}"
+    timeout: 60

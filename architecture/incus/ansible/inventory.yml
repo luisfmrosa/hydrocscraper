@@ -1,0 +1,16 @@
+# Containers are reached with `incus exec` (no SSH) through the local Incus client.
+# The remote (ansible_incus_remote) is set in group_vars/all/local.yml.
+all:
+  vars:
+    ansible_connection: community.general.incus
+    ansible_incus_project: hydroc
+  children:
+    postgres:
+      hosts:
+        hydroc-pg:
+    duckdb_server:
+      hosts:
+        hydroc-duckdb:
+    app:
+      hosts:
+        hydroc-app:

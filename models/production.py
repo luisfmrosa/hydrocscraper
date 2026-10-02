@@ -1,8 +1,9 @@
 """
 Canonical production record schema.
 
-This is the target shape for the Layer 1 (Lance) unified dataset.
-Individual scrapers parse raw files into lists of ProductionRecord.
+Unified, source-independent shape of a production record — the target for
+the future dwh.supply model. Individual scrapers parse raw files into lists
+of ProductionRecord.
 """
 
 from dataclasses import dataclass, field
@@ -13,7 +14,7 @@ from datetime import date, datetime
 class ProductionRecord:
     # Provenance
     source: str          # e.g. "npd", "jodi_oil"
-    source_file: str     # relative path within ./data/
+    source_file: str     # originating raw file
 
     # Location
     country_iso3: str    # ISO 3166-1 alpha-3 (e.g. "NOR")

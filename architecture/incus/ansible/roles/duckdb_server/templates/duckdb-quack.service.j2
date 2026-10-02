@@ -1,0 +1,16 @@
+[Unit]
+Description=DuckDB quack server (hydroc DuckLakes)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=duckdb
+Environment=HOME=/opt/duckdb
+WorkingDirectory=/opt/duckdb/ddl
+# quack_serve() returns immediately; an open stdin keeps the CLI running.
+ExecStart=/bin/sh -c 'tail -f /dev/null | exec {{ duckdb_cli }} -init init_server.sql'
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

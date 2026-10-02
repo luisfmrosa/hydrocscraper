@@ -1,70 +1,56 @@
 """
-Raw storage layer (Layer 0).
+Raw storage layer.
 
-Manages the ./data/ directory tree:
-  data/{source_id}/full/{YYYY-MM-DD}/   — full-load snapshots
-  data/{source_id}/incremental/{YYYY-MM}/  — incremental periods
-  data/{source_id}/.watermark.json       — incremental state
+Files are stored exactly as received in the hydroc-raw bucket:
+  <source>/<dataset>/year_month=<YYYY-MM>/<stem>_<YYYYMMDD_HHmm><ext>
 
-No parsing happens here — files are stored exactly as received.
+`year_month` defaults to the (UTC) month of the download; a scraper may pass
+the reference period instead when the source publishes one file per period.
+
+No parsing happens here.
 """
 
-import json
-import logging
-from datetime import date, datetime
-from pathlib import Path
+from __future__ import annotations
 
-from config import DATA_ROOT
+from datetime import datetime, timezone
+from pathlib import Path, PurePosixPath
 
-logger = logging.getLogger(__name__)
+from config import TIMESTAMP_FORMAT
+from storage import s3
 
 
-def full_dir(source_id: str, run_date: date | None = None) -> Path:
-    """Return the directory for a full-load run.
+def utc_now() -> datetime:
+    return datetime.now(timezone.utc)
 
-    run_date defaults to today.
+
+def timestamp(ts: datetime | None = None) -> str:
+    """Return *ts* (default: now, UTC) formatted as YYYYMMDD_HHmm."""
+    return (ts or utc_now()).strftime(TIMESTAMP_FORMAT)
+
+
+def raw_key(
+    source: str,
+    dataset: str,
+    filename: str,
+    period: str | None = None,
+    ts: datetime | None = None,
+) -> str:
+    """Build the Raw-layer object key for *filename*.
+
+    period — 'YYYY-MM'; defaults to the month of *ts*.
+    ts     — download time; defaults to now (UTC).
     """
-    d = run_date or date.today()
-    return DATA_ROOT / source_id / "full" / d.isoformat()
+    ts = ts or utc_now()
+    period = period or ts.strftime("%Y-%m")
+    name = PurePosixPath(filename)
+    stamped = f"{name.stem}_{timestamp(ts)}{name.suffix}"
+    return f"{source}/{dataset}/year_month={period}/{stamped}"
 
 
-def incremental_dir(source_id: str, period: str) -> Path:
-    """Return the directory for an incremental period.
-
-    period — reference month in 'YYYY-MM' format.
-    """
-    return DATA_ROOT / source_id / "incremental" / period
-
-
-def read_watermark(source_id: str) -> dict:
-    path = DATA_ROOT / source_id / ".watermark.json"
-    if not path.exists():
-        return {}
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        logger.warning("Corrupt watermark for %s, treating as empty.", source_id)
-        return {}
-
-
-def write_watermark(source_id: str, updates: dict) -> None:
-    """Merge *updates* into the existing watermark and persist."""
-    path = DATA_ROOT / source_id / ".watermark.json"
-    path.parent.mkdir(parents=True, exist_ok=True)
-
-    current = read_watermark(source_id)
-    current.update(updates)
-    current["source"] = source_id
-    current["updated_at"] = datetime.utcnow().isoformat(timespec="seconds") + "Z"
-
-    path.write_text(json.dumps(current, indent=2), encoding="utf-8")
-    logger.debug("Watermark updated for %s: %s", source_id, current)
-
-
-def latest_full_dir(source_id: str) -> Path | None:
-    """Return the most recent full-load directory for a source, or None."""
-    base = DATA_ROOT / source_id / "full"
-    if not base.exists():
-        return None
-    runs = sorted(base.iterdir(), reverse=True)
-    return runs[0] if runs else None
+def upload_raw(
+    local_path: Path, source: str, dataset: str, period: str | None = None
+) -> str:
+    """Upload *local_path* to the Raw bucket and return its key."""
+    key = raw_key(source, dataset, local_path.name, period=period)
+    s3.put_file(local_path, key)
+    return key

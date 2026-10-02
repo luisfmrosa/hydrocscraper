@@ -1,0 +1,11 @@
+# Copy to vault.yml (git-ignored), fill in, and optionally encrypt:
+#   ansible-vault encrypt group_vars/all/vault.yml
+vault_pg_passwords:
+  lake: change-me
+  library: change-me
+  dwh: change-me
+  hook: change-me
+
+# Shared by the quack server and its clients (min. 4 characters).
+# Values are embedded in SQL literals: do not use single quotes.
+vault_quack_token: change-me

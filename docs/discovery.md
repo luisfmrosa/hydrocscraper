@@ -6,6 +6,22 @@ The discovery module periodically searches the web for new official national hyd
 
 This is intentionally a **research aid**, not an automatic ingestion pipeline. A human reviews the candidates before any new scraper is built.
 
+> **Status:** the web-search flow described below is not implemented yet. What exists today is snapshot storage. `--mode discover` writes the current catalog to the Raw layer as a new timestamped snapshot, and `--seed FILE` imports a local catalog the first time.
+
+## Known-sources storage
+
+The catalog is stored in the Raw bucket, not in the repository:
+
+```
+s3://hydroc-raw/metadata/known_sources/
+    known_sources_20260929_1000.json
+    known_sources_20260929_1130.json
+```
+
+- Each run writes a new file stamped `YYYYMMDD_HHmm` (UTC). The newest file is the current catalog.
+- Every record carries `md5_digest`: the MD5 of its fields in the fixed order `id, name, url, format, granularity, periodicity, scope, countries`, separated by ``. `null` becomes `""` and lists are joined with `,`. The code is in `utils/hashing.py` and `discovery/store.py`.
+- All snapshots can be queried in `hook.raw_views.known_sources`, which has a `snapshot_at` column.
+
 ---
 
 ## How It Works
@@ -37,7 +53,7 @@ This is intentionally a **research aid**, not an automatic ingestion pipeline. A
 
 2. **Extract** — Parse search results to identify candidate URLs. Filter for government or quasi-governmental domains (`.gov`, `.gob`, `.gouv`, regulatory agency known domains, etc.).
 
-3. **Deduplicate** — Load the current known-source list from `docs/data_sources.md` (parsed as structured data from `discovery/known_sources.json`, kept in sync). Remove any candidate already present.
+3. **Deduplicate** — Load the current known-source list (latest snapshot in `s3://hydroc-raw/metadata/known_sources/`). Remove any candidate already present.
 
 4. **Score** — Rank remaining candidates by signals of data quality:
    - Is the domain official/governmental?
@@ -76,12 +92,12 @@ discovery/
 ├── runner.py          # Orchestrates the full discovery flow
 ├── searcher.py        # Issues web search queries per country/region
 ├── extractor.py       # Parses results, scores candidates
-├── differ.py          # Compares candidates vs. known_sources.json
+├── differ.py          # Compares candidates vs. the latest known-sources snapshot
 ├── reporter.py        # Writes the Markdown report
-└── known_sources.json # Machine-readable mirror of docs/data_sources.md
+└── store.py           # Known-sources snapshots in the Raw bucket (implemented)
 ```
 
-### `known_sources.json` schema
+### Known-sources record schema
 
 ```json
 [

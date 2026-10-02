@@ -1,0 +1,8 @@
+# Copy to terraform.tfvars (git-ignored) and adjust.
+incus_remote      = "my-incus-remote"
+# Only needed when the Incus client config is not in ~/.config/incus,
+# e.g. on Windows: "C:/Users/<you>/AppData/Roaming/incus"
+# incus_config_dir = "C:/Users/<you>/AppData/Roaming/incus"
+bucket_pool       = "naspool-buckets"
+network_cidr      = "10.10.40.1/24"
+expose_quack_port = 0

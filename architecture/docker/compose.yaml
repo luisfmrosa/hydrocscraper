@@ -1,0 +1,121 @@
+# hydrocscraper stack on Docker: RustFS (S3), Postgres (DuckLake catalogs),
+# DuckDB quack server and the app. Settings and credentials: .env (see .env.example).
+#
+#   docker compose up -d --build                                  # start the stack
+#   docker compose run --rm app python main.py --mode full        # run the app
+#   docker compose down                                           # stop (add -v to wipe data)
+
+name: hydroc
+
+x-quack-env: &quack-env
+  QUACK_PORT: "9494"
+  QUACK_TOKEN: ${QUACK_TOKEN:?set QUACK_TOKEN in .env}
+
+services:
+  rustfs:
+    image: rustfs/rustfs:1.0.1-preview.16
+    environment:
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:?set RUSTFS_ACCESS_KEY in .env}
+      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:?set RUSTFS_SECRET_KEY in .env}
+      RUSTFS_CONSOLE_ENABLE: "true"
+    ports:
+      - "127.0.0.1:9000:9000"   # S3 API
+      - "127.0.0.1:9001:9001"   # web console: /rustfs/console/index.html
+    volumes:
+      - rustfs-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://127.0.0.1:9000/health"]
+      interval: 5s
+      retries: 20
+
+  # One-shot: create the layer buckets (idempotent).
+  rustfs-init:
+    image: amazon/aws-cli:2.27.0
+    depends_on:
+      rustfs:
+        condition: service_healthy
+    environment:
+      AWS_ACCESS_KEY_ID: ${RUSTFS_ACCESS_KEY}
+      AWS_SECRET_ACCESS_KEY: ${RUSTFS_SECRET_KEY}
+      AWS_DEFAULT_REGION: us-east-1
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        for layer in raw lake library dwh hook; do
+          b="hydroc-$$layer"
+          aws --endpoint-url http://rustfs:9000 s3api head-bucket --bucket "$$b" 2>/dev/null \
+            || aws --endpoint-url http://rustfs:9000 s3api create-bucket --bucket "$$b"
+          echo "bucket $$b ready"
+        done
+
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_PASSWORD: ${PG_SUPERUSER_PASSWORD:?set PG_SUPERUSER_PASSWORD in .env}
+      PG_PASSWORD_LAKE: ${PG_PASSWORD_LAKE:?set PG_PASSWORD_LAKE in .env}
+      PG_PASSWORD_LIBRARY: ${PG_PASSWORD_LIBRARY:?set PG_PASSWORD_LIBRARY in .env}
+      PG_PASSWORD_DWH: ${PG_PASSWORD_DWH:?set PG_PASSWORD_DWH in .env}
+      PG_PASSWORD_HOOK: ${PG_PASSWORD_HOOK:?set PG_PASSWORD_HOOK in .env}
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+      # Runs on first start only (empty data volume)
+      - ./postgres/init-catalogs.sh:/docker-entrypoint-initdb.d/10-catalogs.sh:ro
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 5s
+      retries: 20
+
+  duckdb:
+    build: ./duckdb
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rustfs-init:
+        condition: service_completed_successfully
+    environment:
+      <<: *quack-env
+      S3_ENDPOINT: rustfs:9000
+      S3_ACCESS_KEY: ${RUSTFS_ACCESS_KEY}
+      S3_SECRET_KEY: ${RUSTFS_SECRET_KEY}
+      PG_HOST: postgres
+      PG_PASSWORD_LAKE: ${PG_PASSWORD_LAKE}
+      PG_PASSWORD_LIBRARY: ${PG_PASSWORD_LIBRARY}
+      PG_PASSWORD_DWH: ${PG_PASSWORD_DWH}
+      PG_PASSWORD_HOOK: ${PG_PASSWORD_HOOK}
+    volumes:
+      - ../../sql/ddl:/opt/duckdb/ddl:ro          # same startup scripts as Incus
+      - duckdb-extensions:/opt/duckdb/.duckdb/extensions
+    ports:
+      - "127.0.0.1:9494:9494"   # quack (plain HTTP)
+    healthcheck:
+      # quack_serve failing leaves the CLI running: check the port itself
+      test: ["CMD", "curl", "-s", "-o", "/dev/null", "http://127.0.0.1:9494/"]
+      interval: 5s
+      retries: 30
+
+  # Not started by `up`; use `docker compose run --rm app python main.py ...`
+  app:
+    profiles: ["app"]
+    build:
+      context: ../..
+      dockerfile: architecture/docker/app/Dockerfile
+    depends_on:
+      duckdb:
+        condition: service_healthy
+    environment:
+      HYDROC_S3_ENDPOINT: http://rustfs:9000
+      HYDROC_S3_RAW_KEY: ${RUSTFS_ACCESS_KEY}
+      HYDROC_S3_RAW_SECRET: ${RUSTFS_SECRET_KEY}
+      HYDROC_QUACK_URL: quack:duckdb:9494
+      HYDROC_QUACK_TOKEN: ${QUACK_TOKEN}
+      HYDROC_QUACK_DISABLE_SSL: "true"   # quack_serve is plain HTTP
+    volumes:
+      - ../..:/app                               # live code
+      - app-duckdb:/root/.duckdb                 # quack extension cache
+
+volumes:
+  rustfs-data:
+  pg-data:
+  duckdb-extensions:
+  app-duckdb:

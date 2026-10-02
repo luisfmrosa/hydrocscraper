@@ -1,0 +1,38 @@
+- name: Install PostgreSQL
+  ansible.builtin.apt:
+    name: [postgresql, python3-psycopg2]
+
+- name: Listen on all interfaces
+  ansible.builtin.lineinfile:
+    path: /etc/postgresql/{{ postgres_version }}/main/postgresql.conf
+    regexp: '^#?listen_addresses'
+    line: "listen_addresses = '*'"
+  notify: Restart postgresql
+
+- name: Allow each catalog user from the DuckDB server only
+  community.postgresql.postgresql_pg_hba:
+    dest: /etc/postgresql/{{ postgres_version }}/main/pg_hba.conf
+    contype: host
+    databases: cat_hydroc_{{ item }}
+    users: user_hydroc_{{ item }}
+    source: "{{ instance_ips['hydroc-duckdb'] }}/32"
+    method: scram-sha-256
+  loop: "{{ ducklake_layers }}"
+  notify: Reload postgresql
+
+- name: Create catalog users
+  become: true
+  become_user: postgres
+  community.postgresql.postgresql_user:
+    name: user_hydroc_{{ item }}
+    password: "{{ vault_pg_passwords[item] }}"
+  loop: "{{ ducklake_layers }}"
+  no_log: true
+
+- name: Create catalog databases
+  become: true
+  become_user: postgres
+  community.postgresql.postgresql_db:
+    name: cat_hydroc_{{ item }}
+    owner: user_hydroc_{{ item }}
+  loop: "{{ ducklake_layers }}"

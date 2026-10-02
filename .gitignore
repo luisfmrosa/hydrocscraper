@@ -29,3 +29,11 @@ Thumbs.db
 # Data folders
 data/
 lake/
+
+# Infrastructure state and secrets
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+architecture/incus/ansible/group_vars/all/vault.yml
+architecture/incus/ansible/group_vars/all/local.yml

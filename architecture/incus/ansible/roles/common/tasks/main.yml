@@ -1,0 +1,21 @@
+- name: Map the Incus host name to the bridge gateway (bucket endpoint)
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    regexp: '\s{{ incus_host_name }}$'
+    line: "{{ gateway_ip }} {{ incus_host_name }}"
+
+- name: Install base packages
+  ansible.builtin.apt:
+    name: [ca-certificates, curl, unzip]
+    update_cache: true
+
+- name: Trust the Incus server certificate (bucket endpoint TLS)
+  ansible.builtin.copy:
+    src: "{{ incus_server_cert }}"
+    dest: /usr/local/share/ca-certificates/incus-{{ incus_host_name }}.crt
+    mode: "0644"
+  register: incus_ca
+
+- name: Refresh CA store
+  ansible.builtin.command: update-ca-certificates
+  when: incus_ca is changed
