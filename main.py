@@ -2,23 +2,18 @@
 hydrocscraper — CLI entry point.
 
 Usage:
-    # Download raw data
+    # Download into Raw, then load the Lake
     python main.py --mode full
     python main.py --mode full --sources npd
-    python main.py --mode incremental
+    python main.py --mode incremental --datasets npd_field_production_monthly
 
-    # Snapshot the known-sources catalog to the Raw layer
-    python main.py --mode discover
-    python main.py --mode discover --seed discovery/known_sources.json
-
-DuckLake objects are created by the DuckDB server at startup (sql/ddl/).
+DuckLake objects are created by the DuckDB server at startup (sql/ddl/);
+Lake tables are created by the app on first load.
 """
 
 import importlib
 import logging
-import json
 import sys
-from pathlib import Path
 
 import click
 
@@ -35,14 +30,31 @@ def _setup_logging(verbose: bool) -> None:
     )
 
 
-def _load_scraper(source_id: str, client):
-    dotted = SCRAPER_REGISTRY.get(source_id)
-    if dotted is None:
+def _select(datasets: tuple[str, ...], sources: tuple[str, ...]) -> list[str]:
+    """Dataset codes to run: the union of --datasets and --sources, or all."""
+    if not datasets and not sources:
+        return list(SCRAPER_REGISTRY)
+
+    unknown = [d for d in datasets if d not in SCRAPER_REGISTRY]
+    if unknown:
         raise click.BadParameter(
-            f"Unknown source '{source_id}'. "
-            f"Available: {', '.join(SCRAPER_REGISTRY)}"
+            f"Unknown dataset(s) {', '.join(unknown)}. Available: {', '.join(SCRAPER_REGISTRY)}"
         )
-    module_path, class_name = dotted.rsplit(".", 1)
+    registered = {entry["source"] for entry in SCRAPER_REGISTRY.values()}
+    unknown = [s for s in sources if s not in registered]
+    if unknown:
+        raise click.BadParameter(
+            f"Unknown source(s) {', '.join(unknown)}. Available: {', '.join(sorted(registered))}"
+        )
+
+    return [
+        code for code, entry in SCRAPER_REGISTRY.items()
+        if code in datasets or entry["source"] in sources
+    ]
+
+
+def _load_scraper(code: str, client):
+    module_path, class_name = SCRAPER_REGISTRY[code]["class"].rsplit(".", 1)
     module = importlib.import_module(module_path)
     cls = getattr(module, class_name)
     return cls(client)
@@ -52,46 +64,41 @@ def _load_scraper(source_id: str, client):
 @click.option(
     "--mode",
     required=True,
-    type=click.Choice(["full", "incremental", "discover"], case_sensitive=False),
+    type=click.Choice(["full", "incremental"], case_sensitive=False),
     help=(
-        "full: download complete history. "
-        "incremental: download only new periods. "
-        "discover: write a new known-sources snapshot to the Raw layer."
+        "full: download the complete dataset, then rebuild its Lake table. "
+        "incremental: download only new data, then append its changes to the Lake."
+    ),
+)
+@click.option(
+    "--datasets",
+    multiple=True,
+    help=(
+        "Datasets to run (repeatable). "
+        f"Available: {', '.join(SCRAPER_REGISTRY)}"
     ),
 )
 @click.option(
     "--sources",
     multiple=True,
-    default=None,
     help=(
-        "Which sources to run (repeatable: --sources npd --sources eia). "
-        "Omit to run all registered sources. "
-        f"Available: {', '.join(SCRAPER_REGISTRY)}"
+        "Run every dataset of these sources (repeatable). "
+        f"Available: {', '.join(sorted({e['source'] for e in SCRAPER_REGISTRY.values()}))}"
     ),
 )
-@click.option(
-    "--seed",
-    type=click.Path(exists=True, dir_okay=False, path_type=Path),
-    default=None,
-    help="discover only: import known sources from a local JSON file.",
-)
 @click.option("--verbose", "-v", is_flag=True, default=False, help="Debug logging.")
-def main(mode: str, sources: tuple[str, ...], seed: Path | None, verbose: bool) -> None:
+def main(mode: str, datasets: tuple[str, ...], sources: tuple[str, ...], verbose: bool) -> None:
     _setup_logging(verbose)
     logger = logging.getLogger("hydrocscraper.main")
 
-    if mode == "discover":
-        _cmd_discover(seed, logger)
-        return
-
-    targets = list(sources) if sources else list(SCRAPER_REGISTRY)
-    logger.info("Mode: %s  |  Sources: %s", mode, ", ".join(targets))
+    targets = _select(datasets, sources)
+    logger.info("Mode: %s  |  Datasets: %s", mode, ", ".join(targets))
 
     errors: list[str] = []
     with build_client() as client:
-        for source_id in targets:
+        for code in targets:
             try:
-                scraper = _load_scraper(source_id, client)
+                scraper = _load_scraper(code, client)
                 logger.info("--- %s ---", scraper)
 
                 if mode == "full":
@@ -100,36 +107,14 @@ def main(mode: str, sources: tuple[str, ...], seed: Path | None, verbose: bool) 
                     scraper.incremental_load()
 
             except Exception as exc:
-                logger.error("FAILED %s: %s", source_id, exc, exc_info=True)
-                errors.append(source_id)
+                logger.error("FAILED %s: %s", code, exc, exc_info=True)
+                errors.append(code)
 
     if errors:
         logger.error("Finished with errors in: %s", ", ".join(errors))
         sys.exit(1)
     else:
         logger.info("Done.")
-
-
-# ---------------------------------------------------------------------------
-# Sub-command implementations
-# ---------------------------------------------------------------------------
-
-def _cmd_discover(seed: Path | None, logger: logging.Logger) -> None:
-    from discovery.store import latest_known_sources, save_known_sources
-
-    if seed is not None:
-        records = json.loads(seed.read_text(encoding="utf-8"))
-        logger.info("Seeding %d known sources from %s", len(records), seed)
-    else:
-        records = latest_known_sources()
-        if not records:
-            logger.error("No known-sources snapshot found. Run with --seed first.")
-            sys.exit(1)
-        # The web-search discovery flow (docs/discovery.md) is not implemented
-        # yet; this snapshots the current catalog.
-
-    key = save_known_sources(records)
-    logger.info("Known sources snapshot written: %s (%d records)", key, len(records))
 
 
 if __name__ == "__main__":

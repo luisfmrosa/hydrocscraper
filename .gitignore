@@ -22,13 +22,17 @@ ENV/
 .vscode/
 .idea/
 
+# Claude Code: share project skills, keep personal settings and worktrees local
+.claude/settings.local.json
+.claude/worktrees/
+
 # OS
 .DS_Store
 Thumbs.db
 
-# Data folders
-data/
-lake/
+# Data folders: only the static Hook metadata is versioned
+data/*
+!data/static/
 
 # Infrastructure state and secrets
 .terraform/

@@ -23,7 +23,7 @@ bucket_endpoint: "{{ incus_host_name }}:{{ bucket_endpoint_port }}"
 # Incus server certificate on the Ansible controller
 incus_server_cert: "~/.config/incus/servercerts/{{ incus_host_name }}.crt"
 
-layers: [raw, lake, library, dwh, hook]
+layers: [raw, std, lake, library, dwh, hook]
 ducklake_layers: [lake, library, dwh, hook]
 
 postgres_version: 15

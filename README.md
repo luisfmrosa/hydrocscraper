@@ -10,8 +10,11 @@ Scrapers (per source) ── hydroc-app
       ▼
 Raw      s3://hydroc-raw/<source>/<dataset>/year_month=<YYYY-MM>/<file>_<YYYYMMDD_HHmm>
       │
-      ▼  (DuckDB server hydroc-duckdb, quack protocol, DuckLake catalogs in Postgres)
-Lake → Library (frame / latest) → DWH (supply)        Hook (metadata / raw_views)
+      ▼  static SQL on the DuckDB server hydroc-duckdb (quack protocol)
+Std      s3://hydroc-std/<source>/<table>/year_month=<YYYY-MM>/<source>_<table>_<YYYYMMDD_HHmm>.parquet
+      │
+      ▼  (DuckLake catalogs in Postgres)
+Lake → Library (frame / latest) → DWH (supply)        Hook (metadata / raw_views / std_views)
 ```
 
 The stack runs on Incus: three containers (Postgres, a DuckDB quack server and the app) and one S3 bucket per layer. See [docs/architecture.md](docs/architecture.md).
@@ -55,7 +58,6 @@ Runs RustFS (S3), Postgres, the DuckDB quack server and the app with Docker Comp
 cd architecture/docker
 cp .env.example .env                                   # set every value
 docker compose up -d --build
-docker compose run --rm app python main.py --mode discover --seed discovery/known_sources.json
 docker compose run --rm app python main.py --mode full
 ```
 
@@ -80,11 +82,8 @@ cp group_vars/all/local.yml.example group_vars/all/local.yml   # Incus remote/ho
 ansible-playbook -i inventory.yml site.yml   # -i: under WSL /mnt/c, ansible.cfg is ignored
 
 # 3. First loads, from hydroc-app (/opt/hydrocscraper)
-.venv/bin/python main.py --mode discover --seed discovery/known_sources.json
 .venv/bin/python main.py --mode full
 
-# 4. Restart the server so the raw views get created over the new files
-incus exec hydroc-duckdb --project hydroc -- systemctl restart duckdb-quack
 ```
 
 Local development: `pip install -r requirements.txt`, then copy `.env.example` to `.env`. Tests: `pytest`.
@@ -92,26 +91,31 @@ Local development: `pip install -r requirements.txt`, then copy `.env.example` t
 ## Usage
 
 ```bash
-# Full download (all registered sources, or a subset)
-python main.py --mode full
-python main.py --mode full --sources npd
+# Full: download the complete dataset into Raw, rebuild Std from every Raw file, then rebuild the Lake
+python main.py --mode full                                       # every dataset
+python main.py --mode full --sources npd                         # every dataset of a source
+python main.py --mode full --datasets npd_field_production_monthly
 
-# Incremental update: stores a file only when new periods appear
+# Incremental: store a file only when new data appears, convert it to Std, then load its changes into the Lake
+# (first finishes a file left half-way by a failed run)
 python main.py --mode incremental
-
-# Write a new known-sources snapshot to s3://hydroc-raw/metadata/known_sources/
-python main.py --mode discover
-python main.py --mode discover --seed discovery/known_sources.json   # one-time import
 
 # Verbose / debug logging
 python main.py --mode full -v
 ```
 
-DuckLake schemas and tables are not created by the app. The DuckDB server applies `sql/ddl/` every time it starts.
+The DuckDB server creates the layer schemas and the Hook metadata tables at every start (`sql/ddl/`). The app (re)creates a dataset's raw view, std views and Lake tables before each step, so a first load needs no server restart.
 
-## Adding a New Scraper
+## Adding a New Dataset
 
-1. Create `scrapers/{source_id}.py`, inheriting from `scrapers.base.BaseScraper`.
-2. Implement `full_load()`, `incremental_load()` and `parse()`. Use `fetch_to_temp()`, `store_raw(path, dataset)` and `save_watermark(dataset, ...)`.
-3. Register the class in `config.py` under `SCRAPER_REGISTRY`.
-4. Optionally add a view in `sql/ddl/raw_views/` and a `.read` line in `sql/ddl/init_server.sql`.
+One scraper class per source and dataset:
+
+1. Create `scrapers/<source>/<dataset>.py` with a class inheriting from `scrapers.base.BaseScraper`. Set `source` and `dataset`, then implement `download_full()` and `download_incremental()` (return `True` when a file was stored). Use `fetch_to_temp()`, `store_raw(path)` (or `store_table(...)` for a Parquet conversion or an API/database extract) and `save_watermark(..., status="raw")`. Python only writes to Raw; the base class then runs Std and the Lake loads.
+2. Register the class in `config.py` under `SCRAPER_REGISTRY`, keyed by its code `<source>_<dataset>`.
+3. Add the dataset to `data/static/datasets.csv` (one row per Std/Lake table with its `keys`; flattened tables linked by `parent_code`), and the source to `data/static/sources.csv` if it's new.
+4. Write its static SQL (the project skills `raw-view`, `std-script`, `std-view`, `lake-table` and `lake-load-script` in `.claude/skills/` describe each step; `add-dataset` runs the whole checklist):
+   - raw view `sql/ddl/raw_views/<nnn>_<source>_<dataset>.sql`;
+   - Std script `sql/std/<source>/<dataset>.sql`;
+   - per Std table: std view `sql/ddl/std_views/<nnn>_<code>.sql`, Lake table `sql/ddl/lake/<code>.sql`, Lake loads `sql/lake/<source>/<table>_full.sql` and `_incremental.sql`;
+   - `.read` lines for the views and Lake tables in `sql/ddl/init_server.sql`.
+5. Restart the DuckDB server so it reloads the static metadata.

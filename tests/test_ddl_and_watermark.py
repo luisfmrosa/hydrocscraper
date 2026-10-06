@@ -42,7 +42,7 @@ def test_ddl_is_idempotent(con):
         "WHERE schema_name <> 'main' AND database_name IN ('library','dwh','hook') ORDER BY 1"
     ).fetchall()
     assert [s[0] for s in schemas] == [
-        "dwh.supply", "hook.metadata", "hook.raw_views", "library.frame", "library.latest",
+        "dwh.supply", "hook.metadata", "hook.raw_views", "hook.std_views", "library.frame", "library.latest",
     ]
 
 

@@ -58,7 +58,7 @@ variable "bucket_pool" {
 variable "layers" {
   description = "Data layers; each gets a bucket named hydroc-<layer>."
   type        = set(string)
-  default     = ["raw", "lake", "library", "dwh", "hook"]
+  default     = ["raw", "std", "lake", "library", "dwh", "hook"]
 }
 
 variable "quack_port" {

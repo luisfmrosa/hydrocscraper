@@ -32,9 +32,13 @@ HTTP_MAX_RETRIES = 4
 HTTP_BACKOFF_MIN = 2   # seconds
 HTTP_BACKOFF_MAX = 30  # seconds
 
-# Registry: maps source_id -> scraper module/class name
-# Used by main.py to resolve --sources arguments
+# Registry: one scraper class per dataset, keyed by dataset code
+# (<source>_<dataset>, as in data/static/datasets.csv).
+# Used by main.py to resolve --datasets and --sources arguments.
 SCRAPER_REGISTRY = {
-    "npd": "scrapers.npd.NPDScraper",
-    # More scrapers added here as they are implemented
+    "npd_field_production_monthly": {
+        "source": "npd",
+        "class": "scrapers.npd.field_production_monthly.NpdFieldProductionMonthly",
+    },
+    # More datasets added here as they are implemented
 }

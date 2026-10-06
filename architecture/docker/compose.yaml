@@ -42,7 +42,7 @@ services:
     command:
       - |
         set -e
-        for layer in raw lake library dwh hook; do
+        for layer in raw std lake library dwh hook; do
           b="hydroc-$$layer"
           aws --endpoint-url http://rustfs:9000 s3api head-bucket --bucket "$$b" 2>/dev/null \
             || aws --endpoint-url http://rustfs:9000 s3api create-bucket --bucket "$$b"
@@ -85,6 +85,7 @@ services:
       PG_PASSWORD_HOOK: ${PG_PASSWORD_HOOK}
     volumes:
       - ../../sql/ddl:/opt/duckdb/ddl:ro          # same startup scripts as Incus
+      - ../../data/static:/opt/duckdb/static:ro   # static Hook metadata (45_hook_static.sql)
       - duckdb-extensions:/opt/duckdb/.duckdb/extensions
     ports:
       - "127.0.0.1:9494:9494"   # quack (plain HTTP)

@@ -30,6 +30,14 @@
     mode: "0644"
   notify: Restart duckdb-quack
 
+- name: Copy static Hook metadata (data/static)
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../../data/static/"
+    dest: /opt/duckdb/static/
+    owner: duckdb
+    mode: "0644"
+  notify: Restart duckdb-quack
+
 - name: Render secrets
   ansible.builtin.template:
     src: secrets.sql.j2

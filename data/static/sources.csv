@@ -1,0 +1,16 @@
+id,code,name,scope,url
+1,jodi_oil,JODI Oil,Public,https://www.jodidata.org/oil/database/data-downloads.aspx
+2,jodi_gas,JODI Gas,Public,https://www.jodidata.org/gas/database/data-downloads.aspx
+3,eia,EIA International,Public,https://api.eia.gov/v2/international/
+4,iea,IEA Monthly Oil Statistics,Private,https://www.iea.org/data-and-statistics/data-product/monthly-oil-statistics
+5,opec_momr,OPEC Monthly Oil Market Report,Public,https://www.opec.org/opec_web/en/publications/338.htm
+6,opec_asb,OPEC Annual Statistical Bulletin,Public,https://www.opec.org/opec_web/en/data_graphs/330.htm
+7,energy_institute,Energy Institute Statistical Review,Public,https://www.energyinst.org/statistical-review
+8,npd,Norway Sokkeldirektoratet (NPD),Public,https://factpages.sodir.no/en/field
+9,nsta,UK NSTA,Public,https://www.nstauthority.co.uk/data-and-insights/data/themes/production/
+10,anp,Brazil ANP,Public,https://www.gov.br/anp/pt-br/assuntos/producao-e-royalties/producao
+11,cer,Canada CER,Public,https://www.cer-rec.gc.ca/en/data-analysis/energy-commodities/crude-oil-petroleum-products/statistics/
+12,cnh,Mexico CNH,Public,https://hidrocarburos.gob.mx/estadisticas-de-produccion/
+13,anh,Colombia ANH,Public,https://www.anh.gov.co/es/administracion-del-recurso/gestion-del-recurso-hidrocarburifero/estadisticas-hidrocarburos
+14,argentina_se,Argentina Secretaría de Energía,Public,https://www.argentina.gob.ar/economia/energia/hidrocarburos/produccion
+15,nlog,Netherlands NLOG,Public,https://www.nlog.nl/en/production-data

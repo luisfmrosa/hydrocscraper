@@ -1,11 +1,11 @@
--- Incremental-load state. Append-only: one row per successful load.
+-- Incremental-load state. Append-only: one row per completed step of a load.
 CREATE TABLE IF NOT EXISTS hook.metadata.watermark (
     source              VARCHAR,
     dataset             VARCHAR,
     load_mode           VARCHAR,      -- 'full' | 'incremental'
     last_period_fetched VARCHAR,      -- 'YYYY-MM'
-    status              VARCHAR,
-    raw_file            VARCHAR,      -- key in s3://hydroc-raw/
+    status              VARCHAR,      -- 'raw' | 'std' | 'lake' (pipeline step reached)
+    raw_file            VARCHAR,      -- key in s3://hydroc-raw/ of the file Std reads
     updated_at          TIMESTAMPTZ
 );
 

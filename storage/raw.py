@@ -7,7 +7,9 @@ Files are stored exactly as received in the hydroc-raw bucket:
 `year_month` defaults to the (UTC) month of the download; a scraper may pass
 the reference period instead when the source publishes one file per period.
 
-No parsing happens here.
+No parsing happens here. Files DuckDB can't read (e.g. .xls, HTML) are stored
+as received *and* as a Parquet conversion with the same period and timestamp
+(the scraper builds the table; see BaseScraper.store_table).
 """
 
 from __future__ import annotations
@@ -48,9 +50,17 @@ def raw_key(
 
 
 def upload_raw(
-    local_path: Path, source: str, dataset: str, period: str | None = None
+    local_path: Path,
+    source: str,
+    dataset: str,
+    period: str | None = None,
+    ts: datetime | None = None,
 ) -> str:
-    """Upload *local_path* to the Raw bucket and return its key."""
-    key = raw_key(source, dataset, local_path.name, period=period)
+    """Upload *local_path* to the Raw bucket and return its key.
+
+    Pass the same *ts* to store several files of one download (e.g. an
+    original and its Parquet conversion) under one timestamp.
+    """
+    key = raw_key(source, dataset, local_path.name, period=period, ts=ts)
     s3.put_file(local_path, key)
     return key

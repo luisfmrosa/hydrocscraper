@@ -13,7 +13,7 @@ umask 077
     echo "SET VARIABLE quack_token = '${QUACK_TOKEN}';"
 
     # RustFS: one root key for every bucket, plain HTTP inside the compose network
-    for layer in raw lake library dwh hook; do
+    for layer in raw std lake library dwh hook; do
         echo "CREATE SECRET s3_${layer} (TYPE s3, KEY_ID '${S3_ACCESS_KEY}', SECRET '${S3_SECRET_KEY}', ENDPOINT '${S3_ENDPOINT}', URL_STYLE 'path', USE_SSL false, REGION 'us-east-1', SCOPE 's3://hydroc-${layer}');"
     done
 

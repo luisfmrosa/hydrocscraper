@@ -4,7 +4,7 @@ The same stack as the Incus setup, in Docker Compose. RustFS provides the S3 API
 
 | Service | What it does | Host access |
 |---|---|---|
-| `rustfs` | S3 server for the five `hydroc-<layer>` buckets | S3 API `http://127.0.0.1:9000`, console `http://127.0.0.1:9001/rustfs/console/index.html` |
+| `rustfs` | S3 server for the six `hydroc-<layer>` buckets | S3 API `http://127.0.0.1:9000`, console `http://127.0.0.1:9001/rustfs/console/index.html` |
 | `rustfs-init` | One-shot job: creates the buckets, then exits | — |
 | `postgres` | DuckLake catalogs `cat_hydroc_<layer>`, each owned by `user_hydroc_<layer>` | — |
 | `duckdb` | DuckDB 2.0 quack server running `sql/ddl/init_server.sql` | `quack:127.0.0.1:9494` |
@@ -26,12 +26,13 @@ docker compose ps             # rustfs/postgres/duckdb healthy, rustfs-init exit
 ## Run the app
 
 ```bash
-docker compose run --rm app python main.py --mode discover --seed discovery/known_sources.json
 docker compose run --rm app python main.py --mode full --sources npd
 docker compose run --rm app python main.py --mode incremental
 ```
 
-The raw views (`hook.raw_views.*`) can only be created once their files exist. After the first loads, restart the server so it creates them:
+`full` stores a new Raw file, rebuilds Std (`hydroc-std`) from every Raw file and rebuilds the Lake table (`lake.npd.field_production_monthly`); `incremental` converts and loads a new file's changes only. The app creates a missing raw view, std view or Lake table itself.
+
+After editing `data/static/*.csv`, restart the server so it rebuilds `hook.metadata.*`:
 
 ```bash
 docker compose restart duckdb
@@ -39,7 +40,7 @@ docker compose restart duckdb
 
 ## Inspect
 
-- **Server log:** `docker compose logs duckdb`. On the very first start, only the two raw-view "No files found" errors are expected.
+- **Server log:** `docker compose logs duckdb`. On the very first start, only "No files found" errors from the raw and std views are expected.
 - **Query the server from the app container:**
   ```bash
   docker compose run --rm app python -c "from storage import duck; print(duck.query('SELECT * FROM hook.metadata.watermark'))"

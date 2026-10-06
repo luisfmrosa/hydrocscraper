@@ -1,8 +1,12 @@
 """
 Incremental-load state, stored in hook.metadata.watermark (see
-sql/ddl/41_hook_watermark.sql). The table is append-only: each successful
+sql/ddl/41_hook_watermark.sql). The table is append-only: each step of a
 load inserts a row, and hook.metadata.watermark_latest exposes the most
 recent one per (source, dataset).
+
+`status` follows a Raw file through the pipeline: 'raw' (stored in Raw),
+'std' (converted to Std), 'lake' (loaded into the Lake). Rows written before
+the Std layer existed have 'ok', which counts as done.
 """
 
 from __future__ import annotations
@@ -19,6 +23,8 @@ TABLE = "hook.metadata.watermark"
 LATEST_VIEW = "hook.metadata.watermark_latest"
 
 FIELDS = ("load_mode", "last_period_fetched", "status", "raw_file")
+STATUSES = ("raw", "std", "lake")
+DONE = ("lake", "ok")
 
 Executor = Callable[[str], tuple[list[str], list[tuple]]]
 
