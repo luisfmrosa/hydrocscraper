@@ -24,4 +24,9 @@
 .read raw_views/020_npd_field_production_monthly.sql
 .read std_views/020_npd_field_production_monthly.sql
 
+-- Library frame and latest views, one script per Lake table and mode
+-- (<code>.sql production, <code>_dev.sql development). They fail until the
+-- Lake table exists; the app re-runs them after every Lake load.
+.read library/npd_field_production_monthly_dev.sql
+
 .read 99_serve.sql

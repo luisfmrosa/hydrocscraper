@@ -46,13 +46,13 @@ The same stack can be deployed two ways (see *Infrastructure* below): on an Incu
 | **Raw** | `hydroc-raw` (plain bucket) | Files exactly as received, plus `metadata/` (copies of the static Hook metadata) |
 | **Std** | `hydroc-std` (plain bucket) | Every Raw file as typed Parquet, flattened when not tabular. Derived from Raw; the Lake loads from it |
 | **Lake** | DuckLake `lake`, one schema per source | Append-only change records per Std table, e.g. `lake.npd.field_production_monthly` (see *Lake tables*) |
-| **Library** | DuckLake `library`, schemas `frame` and `latest` | SCD2-like Frame objects and latest-version views. *Planned.* |
+| **Library** | DuckLake `library`, schemas `frame` and `latest` | SCD2 frame views over one Lake table each, with the hook columns, and latest-version views, e.g. `library.frame.npd_field_production_monthly_dev` (see *Library views*) |
 | **DWH** | DuckLake `dwh`, schema `supply` | Business views and models |
 | **Hook** | DuckLake `hook`, schemas `metadata`, `raw_views` and `std_views` | `metadata`: `sources`, `datasets`, `business_concepts`, `hooks` (static, from `data/static/`) and `watermark`. `raw_views`: one view per dataset over its Raw files. `std_views`: one view per Std table over its Parquet files |
 
 Every layer has its own bucket, `hydroc-<layer>`. Raw and Std are plain buckets of files; the other four are DuckLakes, each with its data in its own bucket and its catalog in its own Postgres database (`cat_hydroc_<layer>`) owned by its own user (`user_hydroc_<layer>`), all on the same Postgres instance. Separate catalogs and users leave room to segregate access per layer later.
 
-- **Library** (*not defined yet*). `frame` holds SCD2-like objects, each built on **one** Lake object (a table, a view or a materialized view; no joins), plus the Hook columns defined for it when it is created. `latest` holds views over the Frame objects that show only the current version of each row. Hooks live here, not in the Lake: a Frame gets one column per hook of its dataset (`hook.metadata.hooks`), presumably named `HK_<business concept name in uppercase>` and holding, in development, `key_set || '|' || <hook expression>` (`VARCHAR`, e.g. `npd.field|17196400`) or, in production, `key_set_binary || <hook expression as UTF-8 bytes>` (`BLOB`). To be settled when the Library is designed.
+- **Library.** `frame` holds SCD2 views, each built on **one** Lake table (no joins), with one column per hook of its dataset. `latest` holds views over the frames that show only the current, non-deleted version of each key. Hooks live here, not in the Lake (see *Library views*).
 - **DWH.** The space for business views and models built on the Library. It starts with one schema, `supply`.
 
 ### Raw bucket layout
@@ -141,7 +141,7 @@ Update `sources.csv` and `datasets.csv` whenever a dataset is added, and `busine
 | `key_set` | `<source code>.<business concept code>`, the source being the dataset's (`datasets.source_id` → `sources.code`) | `npd.field` |
 | `key_set_binary` | source id as one byte, followed by business concept id as one byte (`BLOB`) | `0x0801` (source 8, concept 1) |
 
-Both identify the same thing: Library tables can use `key_set` (readable) during development and switch to `key_set_binary` (compact) later (see *Layers*). Datasets of the same source share a key set for a given concept, which is what lets their rows meet on the hook. One byte per id caps source and business concept ids at 255. The table build fails, keeping the previous table and logging the error, on a duplicate `id`, an unknown dataset or business concept, or an id above 255. Use the `add-hook` project skill to add one.
+Both identify the same thing: Library frames use `key_set` (readable) in development and `key_set_binary` (compact) in production (see *Library views*). Datasets of the same source share a key set for a given concept, which is what lets their rows meet on the hook. One byte per id caps source and business concept ids at 255. The table build fails, keeping the previous table and logging the error, on a duplicate `id`, an unknown dataset or business concept, or an id above 255. Use the `add-hook` project skill to add one.
 
 `datasets` has one row per Std/Lake table. A non-tabular dataset also has a row of its own with empty `keys` (no table); its flattened tables point to it, or to their parent table, through `parent_code`. The app (`storage/datasets.py`) follows `parent_code` to find the tables a download feeds. The keys are written into each table's SQL scripts.
 
@@ -163,8 +163,9 @@ Everything after that is static SQL run on the DuckDB server:
 | `sql/ddl/lake/<code>.sql` | Lake schema and table `lake.<source>.<table>` (`IF NOT EXISTS`) |
 | `sql/lake/<source>/<table>_full.sql` | Full load |
 | `sql/lake/<source>/<table>_incremental.sql` | Incremental load |
+| `sql/ddl/library/<code>[_dev].sql` | Library frame and latest views of a Lake table, production or development (`CREATE OR REPLACE`) |
 
-The server runs the view and Lake table scripts at startup. The app's runners (`storage/std.py`, `storage/lake.py`, no logic) re-run the raw view before the Std script and the std view and Lake table before each load, so a new dataset or a first download needs no server restart.
+The server runs the view and Lake table scripts at startup. The app's runners (`storage/std.py`, `storage/lake.py`, no logic) re-run the raw view before the Std script, the std view and Lake table before each load, and the table's Library views after it, so a new dataset or a first download needs no server restart.
 
 ### Raw view columns
 
@@ -206,6 +207,31 @@ One schema per source, one append-only table per Std table. The Lake holds only 
 
 - **Incremental** (`--mode incremental`, only when a new file was stored): compares the Std file of the latest watermark with the current state. A file older than the Lake's latest load is ignored, and running the same file again adds nothing.
 - **Full** (`--mode full`, after the download and the Std rebuild): `TRUNCATE`, then one set-based statement replays every Std file from oldest to newest. Files are numbered by download time; per key, `LAG` finds new, reappearing and changed rows, and `LEAD` finds the file in which a key disappears. The result equals running the incremental load once per file; the tests check this.
+
+### Library views
+
+Each Lake table can have a frame and a latest view, in development and/or production mode, both defined in `sql/ddl/library/<code>[_dev].sql` (project skill `add-frame`):
+
+| | Development | Production |
+|---|---|---|
+| Frame | `library.frame.<code>_dev` | `library.frame.<code>` |
+| Latest | `library.latest.<code>_dev` | `library.latest.<code>` |
+| Hook columns | `VARCHAR`: `key_set || '|' || <hook expression>` (`npd.field|17196400`) | `BLOB`: `key_set_binary || <hook expression as UTF-8 bytes>` (`0x0801` + `'17196400'`) |
+
+**Frame** (SCD2, one version per Lake row):
+
+| Column | Content |
+|--------|---------|
+| `HK_<NAME>` | One per hook of the dataset (`hook.metadata.hooks`, in hook `id` order), named after the business concept's name in uppercase (`HK_FIELD`); key sets written into the view as literals |
+| data columns | The Lake table's |
+| `___Lake_md5`, `___Lake_datasource`, `___Lake_sourcefile` | Lineage of the version |
+| `___Effective_From` | When the version was observed: `___Lake_load_timestamp` |
+| `___Effective_To` | `lead(___Lake_load_timestamp, 1, TIMESTAMPTZ '9999-12-31') OVER (PARTITION BY <keys> ORDER BY ___Lake_load_timestamp)`: when the key's next version was observed, open (`9999-12-31`) for its last one |
+| `___Is_Deleted` | `___Lake_isdeleted`: the key disappeared at `___Effective_From` |
+
+**Latest:** the frame without the three SCD2 columns, where `___Effective_To = TIMESTAMPTZ '9999-12-31' AND NOT ___Is_Deleted`, i.e. the current version of every key that still exists.
+
+The views read the Lake across catalogs (`lake.<source>.<table>` from the `library` DuckLake), which works because every catalog is attached under a fixed alias. A view fails at server start while its Lake table doesn't exist; `storage/lake.py` re-runs the table's Library scripts after every Lake load.
 
 ---
 
@@ -303,7 +329,7 @@ hydrocscraper/
 │   ├── scripts.py          # finds and runs static SQL on the server
 │   ├── std.py              # runs a dataset's Std SQL (Raw -> Std)
 │   ├── duck.py             # quack client
-│   ├── lake.py             # runs a table's Lake SQL (Std -> Lake)
+│   ├── lake.py             # runs a table's Lake SQL (Std -> Lake), then its Library views
 │   └── watermark.py        # hook.metadata.watermark read/write
 ├── utils/
 │   └── http.py             # HTTP client, retries

@@ -53,15 +53,16 @@ The watermark's `raw_file` is the file the raw view reads (the conversion in cas
 5. **Std view(s):** follow the `std-view` skill, once per row with keys.
 6. **Lake table(s):** follow the `lake-table` skill, once per row with keys.
 7. **Lake loads:** follow the `lake-load-script` skill, once per row with keys.
-8. **Server registration:** `.read` lines for the raw view, each std view and each Lake table in `sql/ddl/init_server.sql`.
-9. **Tests:** a unit test for the scraper's pure helpers (like `tests/test_npd.py`) and a SQL test running the real raw view, Std script, std view and Lake scripts on a local DuckDB (like `tests/test_lake.py`). Then run `pytest` (in the app container: `docker compose run --rm --no-deps app sh -c "pip install -q pytest && python -m pytest -q"`).
-10. **Docker stack** (`architecture/docker`):
+8. **Library frames** (optional; ask the user, and whether development or production): follow the `add-frame` skill, once per Lake table. It needs the dataset's hooks (`add-hook` skill, step 1).
+9. **Server registration:** `.read` lines for the raw view, each std view, each Lake table and each Library script in `sql/ddl/init_server.sql`.
+10. **Tests:** a unit test for the scraper's pure helpers (like `tests/test_npd.py`) and a SQL test running the real raw view, Std script, std view and Lake scripts on a local DuckDB (like `tests/test_lake.py`), plus a Library test if frames were added (like `tests/test_library.py`). Then run `pytest` (in the app container: `docker compose run --rm --no-deps app sh -c "pip install -q pytest && python -m pytest -q"`).
+11. **Docker stack** (`architecture/docker`):
     1. `docker compose restart duckdb`, then check the logs;
     2. `docker compose run --rm app python main.py --mode full --datasets <code>`;
     3. `docker compose run --rm app python main.py --mode incremental --datasets <code>`;
     4. `--mode full` again: the log must show `1 of n Raw files converted` (only the new file);
     5. the checks listed in each skill; the latest watermark rows must read `lake`, `std`, `raw`.
-11. **Docs:** add the dataset to `README.md` (data sources table) and to `docs/data_sources.md` if needed.
+12. **Docs:** add the dataset to `README.md` (data sources table) and to `docs/data_sources.md` if needed.
 
 ## Done when
 

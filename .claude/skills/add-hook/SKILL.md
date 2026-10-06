@@ -18,7 +18,7 @@ The hook identifiers are **not** in the file. `sql/ddl/45_hook_static.sql` deriv
 - `key_set` = `<source code>.<business concept code>` (the dataset's source), e.g. `npd.field`;
 - `key_set_binary` = source id as one byte || business concept id as one byte, e.g. `0x0801`.
 
-Never add `key_set` columns to the CSV. Hooks are metadata for the **Library** layer (not defined yet), where Frame tables will carry them. They never go into Lake tables, which hold only incremental changes: adding a hook changes no Lake table or load script.
+Never add `key_set` columns to the CSV. Hooks are metadata for the **Library** layer, where the frame views carry them as `HK_<NAME>` columns (`add-frame` skill). They never go into Lake tables, which hold only incremental changes: adding a hook changes no Lake table or load script.
 
 ## 1. Ask for the input
 
@@ -61,4 +61,4 @@ Keep the existing rows and their order; ids are never reused or renumbered.
 
 ## Report
 
-Tell the user the new hook's `id`, `hook_expression`, `key_set` and `key_set_binary`, and any business concept added. Nothing else changes until the Library layer uses the hook.
+Tell the user the new hook's `id`, `hook_expression`, `key_set` and `key_set_binary`, and any business concept added. The dataset's frame views don't pick the hook up by themselves (they are static SQL): if the dataset has frames (`sql/ddl/library/<code>[_dev].sql`), offer to update them with the `add-frame` skill; otherwise offer to create them.

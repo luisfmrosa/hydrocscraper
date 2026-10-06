@@ -14,7 +14,7 @@ Raw      s3://hydroc-raw/<source>/<dataset>/year_month=<YYYY-MM>/<file>_<YYYYMMD
 Std      s3://hydroc-std/<source>/<table>/year_month=<YYYY-MM>/<source>_<table>_<YYYYMMDD_HHmm>.parquet
       │
       ▼  (DuckLake catalogs in Postgres)
-Lake → Library (frame / latest) → DWH (supply)        Hook (metadata / raw_views / std_views)
+Lake → Library (frame / latest views, with hooks) → DWH (supply)        Hook (metadata / raw_views / std_views)
 ```
 
 The stack runs on Incus: three containers (Postgres, a DuckDB quack server and the app) and one S3 bucket per layer. See [docs/architecture.md](docs/architecture.md).
