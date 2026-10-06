@@ -9,7 +9,7 @@ Input: a dataset with a Lake table, i.e. a row of `data/static/datasets.csv` wit
 
 A frame is a view over **one** Lake table (no joins). Each Lake row (new, changed or deleted) becomes one version; the hooks are added here, never in the Lake.
 
-**Worked example (tested, development):** `sql/ddl/library/no_sodir_field_production_monthly_dev.sql`.
+**Worked examples (tested):** development `sql/ddl/library/no_sodir_field_production_monthly_dev.sql` and `sql/ddl/library/no_sodir_field_dev.sql`; production (`integer` hook) `sql/ddl/library/no_sodir_field.sql`.
 
 ## 1. Ask
 
