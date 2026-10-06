@@ -189,7 +189,7 @@ The Std table's typed columns (keys first; the same order and types as the Lake 
 
 | Column | Content |
 |--------|---------|
-| `___Std_md5` | MD5 of the non-key columns: `md5(concat_ws(chr(31), coalesce(col::VARCHAR, '') …))`, in the view's column order |
+| `___Std_md5` | MD5 of the non-key columns: `md5(concat_ws(chr(31), coalesce(col::VARCHAR, '') …))`, in the view's column order. Columns that change on every export without the data changing are left out (Sodir fields: `fldDateUpdatedMax`, `DatesyncNPD`), so they make no new Lake version: a Lake row keeps their values from the file it was observed in |
 | `___Std_filename` | Full S3 path of the Std file |
 | `___Std_year_month` | `year_month` partition (the Raw file's) |
 | `___Std_file_timestamp` | Download time (UTC) of the Raw file, from the file name suffix |
@@ -287,7 +287,7 @@ The app talks to the server through `storage/duck.py`. It runs `CONNECT 'quack:<
 | Mode | Behaviour |
 |------|-----------|
 | `full` | Downloads the complete dataset into Raw, converts every Raw file that has no Std file yet (all of them with `--rebuild-std`), then rebuilds every Lake table of the dataset by replaying every Std file, which keeps the history of changes between downloads. A watermark row is appended after each step (`raw`, `std`, `lake`). |
-| `incremental` | First finishes a file left at `raw` or `std` by a failed run. Then downloads and compares against the latest watermark (Sodir: the file's MD5 against the last stored file, so revisions of past months count); only when new data exists: stores the file, converts it to Std and loads its changes into the Lake, with a watermark row after each step. |
+| `incremental` | First finishes a file left at `raw` or `std` by a failed run. Then downloads and compares against the latest watermark (Sodir: the file's MD5 against the last stored file, so revisions of past months count; for exports with columns that change on every download, the CSV without them: `is_new_content(path, ignore_columns=…)`); only when new data exists: stores the file, converts it to Std and loads its changes into the Lake, with a watermark row after each step. |
 
 The full load replays every Std file even when each file is a complete snapshot (e.g. Sodir, whose latest file alone holds every row): the Lake's history of changes between downloads only exists by comparing consecutive files.
 

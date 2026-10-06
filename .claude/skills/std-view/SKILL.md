@@ -19,7 +19,7 @@ Input: a row of `data/static/datasets.csv` **with keys**: its `code` (`<source>_
 
 | Column | Expression |
 |---|---|
-| `___Std_md5` | `md5(concat_ws(chr(31), coalesce(<col>::VARCHAR, ''), …))` over **every non-key column**, in view order |
+| `___Std_md5` | `md5(concat_ws(chr(31), coalesce(<col>::VARCHAR, ''), …))` over **every non-key column**, in view order, except columns that change on every export without the data changing (an export or sync date): list those out, with the reason in the header comment, or every row gets a new Lake version at each download (Sodir fields: `fldDateUpdatedMax`, `DatesyncNPD`). Ask the user before leaving a column out |
 | `___Std_filename` | `filename` |
 | `___Std_year_month` | `year_month::VARCHAR` |
 | `___Std_file_timestamp` | `strptime(regexp_extract(filename, '_(\d{8}_\d{4})\.[^./]+$', 1) \|\| ' +0000', '%Y%m%d_%H%M %z')` |

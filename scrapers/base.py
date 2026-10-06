@@ -35,7 +35,9 @@ Helpers:
   - standard logging
 """
 
+import csv
 import hashlib
+import io
 import logging
 import tempfile
 from abc import ABC, abstractmethod
@@ -163,16 +165,24 @@ class BaseScraper(ABC):
             pq.write_table(table, path)
             return self.store_raw(path, period=period, ts=ts)
 
-    def is_new_content(self, path: Path) -> bool:
-        """True unless *path* has the same bytes as the watermark's Raw file.
+    def is_new_content(self, path: Path, ignore_columns: tuple[str, ...] = ()) -> bool:
+        """True unless *path* has the same content as the watermark's Raw file.
 
         For sources that republish a whole snapshot: revisions of past periods
         change the file without changing its latest period.
+
+        Without *ignore_columns*, the bytes are compared. With them, both
+        files are read as CSV (UTF-8) and compared without those columns, in
+        any row order: for exports with columns that change on every download
+        (e.g. an export date).
         """
         key = self.watermark.get("raw_file")
         if not key:
             return True
-        return _md5(path.read_bytes()) != _md5(s3.get_bytes(key))
+        old = s3.get_bytes(key)
+        if not ignore_columns:
+            return _md5(path.read_bytes()) != _md5(old)
+        return _csv_content(path.read_bytes(), ignore_columns) != _csv_content(old, ignore_columns)
 
     @property
     def watermark(self) -> dict:
@@ -187,3 +197,13 @@ class BaseScraper(ABC):
 
 def _md5(data: bytes) -> str:
     return hashlib.md5(data).hexdigest()
+
+
+def _csv_content(data: bytes, ignore_columns: tuple[str, ...]) -> tuple[list[str], list[list[str]]]:
+    """Header and sorted rows of a CSV, without *ignore_columns* and blank lines."""
+    rows = [r for r in csv.reader(io.StringIO(data.decode("utf-8-sig"))) if r]
+    if not rows:
+        return [], []
+    keep = [i for i, name in enumerate(rows[0]) if name not in ignore_columns]
+    header, *body = [[r[i] if i < len(r) else "" for i in keep] for r in rows]
+    return header, sorted(body)

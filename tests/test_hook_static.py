@@ -44,8 +44,11 @@ def test_hooks_derive_key_sets(static, tmp_path):
         "hook_encoding, key_set, key_set_binary FROM hook.metadata.hooks"
     ).fetchall()
     # dataset 1 is Sodir (source 8), business concept 1 is field
-    assert rows[0] == (1, 1, 1, "prfInformationCarrier", "prfNpdidInformationCarrier", "integer",
-                       "no_sodir.field", b"\x08\x01")
+    # dataset 2 (Sodir fields) shares the key set and its encoding
+    assert rows == [
+        (1, 1, 1, "prfInformationCarrier", "prfNpdidInformationCarrier", "integer", "no_sodir.field", b"\x08\x01"),
+        (2, 1, 2, "fldName", "fldNpdidField", "integer", "no_sodir.field", b"\x08\x01"),
+    ]
 
 
 HEADER = "id,business_concept_id,dataset_id,hook_expression_dev,hook_expression_prod,hook_encoding\n"

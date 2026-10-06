@@ -96,6 +96,7 @@ Local development: `pip install -r requirements.txt`, then copy `.env.example` t
 python main.py --mode full                                       # every dataset
 python main.py --mode full --sources no_sodir                         # every dataset of a source
 python main.py --mode full --datasets no_sodir_field_production_monthly
+python main.py --mode incremental --datasets no_sodir_field              # Sodir fields
 
 # Incremental: store a file only when new data appears, convert it to Std, then load its changes into the Lake
 # (first finishes a file left half-way by a failed run)
