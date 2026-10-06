@@ -7,7 +7,7 @@ description: Write the std view (hook.std_views.<code>) over one Std table's Par
 
 Input: a row of `data/static/datasets.csv` **with keys**: its `code` (`<source>_<dataset>`, or `<source>_<dataset>_<sub_table>` for a flattened table) and `keys`. Its Std script (`std-script` skill) must exist. Below, `<table>` is the code without `<source>_`.
 
-**Worked example (tested):** `sql/ddl/std_views/020_npd_field_production_monthly.sql`.
+**Worked example (tested):** `sql/ddl/std_views/020_no_sodir_field_production_monthly.sql`.
 
 ## Conventions
 

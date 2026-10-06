@@ -2,7 +2,7 @@
 Abstract base class for all hydrocscraper scrapers.
 
 One scraper class per source and dataset. Each concrete class must:
-  - declare `source` (e.g. "npd") and `dataset` (e.g. "field_production_monthly");
+  - declare `source` (e.g. "no_sodir") and `dataset` (e.g. "field_production_monthly");
     their code `<source>_<dataset>` is the dataset's `code` in
     data/static/datasets.csv and its key in config.SCRAPER_REGISTRY
   - implement `download_full()` — fetch the complete dataset into Raw

@@ -1,8 +1,8 @@
--- Std view: NPD monthly field production, every Std file.
+-- Std view: Sodir monthly field production, every Std file.
 -- Business key: prfNpdidInformationCarrier, prfYear, prfMonth
--- Loaded into the Lake by sql/lake/npd/field_production_monthly_{full,incremental}.sql.
+-- Loaded into the Lake by sql/lake/no_sodir/field_production_monthly_{full,incremental}.sql.
 --
--- Data columns: as written by sql/std/npd/field_production_monthly.sql
+-- Data columns: as written by sql/std/no_sodir/field_production_monthly.sql
 -- (already typed), same names and order as the Lake table. Then the Std
 -- metadata columns:
 --   ___Std_md5             MD5 of the non-key columns, in this order, joined
@@ -15,7 +15,7 @@
 -- CREATE OR REPLACE: the definition must follow the repository. Fails while
 -- the dataset has no Std files yet; the app re-runs this script before every
 -- Lake load.
-CREATE OR REPLACE VIEW hook.std_views.npd_field_production_monthly AS
+CREATE OR REPLACE VIEW hook.std_views.no_sodir_field_production_monthly AS
 SELECT
     prfNpdidInformationCarrier,
     prfYear,
@@ -41,7 +41,7 @@ SELECT
     strptime(regexp_extract(filename, '_(\d{8}_\d{4})\.[^./]+$', 1) || ' +0000',
              '%Y%m%d_%H%M %z')                      AS ___Std_file_timestamp
 FROM read_parquet(
-    's3://hydroc-std/npd/field_production_monthly/*/*.parquet',
+    's3://hydroc-std/no_sodir/field_production_monthly/*/*.parquet',
     hive_partitioning = true,
     filename = true,
     union_by_name = true

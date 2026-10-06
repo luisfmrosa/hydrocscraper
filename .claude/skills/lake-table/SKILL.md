@@ -16,7 +16,7 @@ There is one Lake table per Std table:
 
 Below, `<table>` is the code without `<source>_`.
 
-**Worked example (tested):** `sql/ddl/lake/npd_field_production_monthly.sql`.
+**Worked example (tested):** `sql/ddl/lake/no_sodir_field_production_monthly.sql`.
 
 ## Conventions
 

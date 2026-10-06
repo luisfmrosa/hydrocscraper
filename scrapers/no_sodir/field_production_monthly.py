@@ -1,5 +1,5 @@
 """
-NPD (Sokkeldirektoratet) FactPages — monthly field production.
+Sodir (Norwegian Offshore Directorate, formerly NPD) FactPages — monthly field production.
 
 Data: monthly field production — oil, gas, NGL, condensate, water
 Source: https://factpages.sodir.no/en/field/TableView/Production/Saleable/Monthly
@@ -8,7 +8,7 @@ Granularity: field level
 Periodicity: monthly
 Licence: NLOD (Norwegian Licence for Open Government Data)
 
-NPD publishes a single CSV containing the complete production history for all
+Sodir publishes a single CSV containing the complete production history for all
 fields. There is no incremental API endpoint, so both full and incremental
 modes download the same file. Incremental mode only stores the file in the
 Raw bucket if its content differs from the watermark's file: a new period,
@@ -28,8 +28,8 @@ CSV columns (English locale):
   prfPrdProducedWaterInFieldMillSm3 — produced water [mill Sm³]
 
 Tabular and readable by DuckDB: stored as received, then
-sql/std/npd/field_production_monthly.sql converts it to Std and the Lake
-(lake.npd.field_production_monthly) loads from Std, keyed by
+sql/std/no_sodir/field_production_monthly.sql converts it to Std and the Lake
+(lake.no_sodir.field_production_monthly) loads from Std, keyed by
 prfNpdidInformationCarrier, prfYear, prfMonth (data/static/datasets.csv).
 """
 
@@ -51,8 +51,8 @@ _CSV_URL = (
 )
 
 
-class NpdFieldProductionMonthly(BaseScraper):
-    source = "npd"
+class NoSodirFieldProductionMonthly(BaseScraper):
+    source = "no_sodir"
     dataset = "field_production_monthly"
 
     @property
@@ -60,7 +60,7 @@ class NpdFieldProductionMonthly(BaseScraper):
         return f"{self.dataset}.csv"
 
     def download_full(self) -> None:
-        self.logger.info("Full load: downloading NPD field production CSV.")
+        self.logger.info("Full load: downloading Sodir field production CSV.")
         with self.fetch_to_temp(_CSV_URL, self.filename) as path:
             latest_period = _latest_period_in_file(path)
             key = self.store_raw(path)
@@ -75,9 +75,9 @@ class NpdFieldProductionMonthly(BaseScraper):
     def download_incremental(self) -> bool:
         last_period = self.watermark.get("last_period_fetched")
 
-        # NPD always publishes the full dataset; compare it with the last
+        # Sodir always publishes the full dataset; compare it with the last
         # stored file to see whether anything changed.
-        self.logger.info("Incremental load: downloading NPD field production CSV.")
+        self.logger.info("Incremental load: downloading Sodir field production CSV.")
         with self.fetch_to_temp(_CSV_URL, self.filename) as path:
             latest_period = _latest_period_in_file(path)
             if not self.is_new_content(path):

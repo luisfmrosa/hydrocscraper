@@ -1,2 +1,2 @@
 id,code,name,source_id,copyright,type,format,parent_code,granularity,periodicity,keys,url
-1,npd_field_production_monthly,NPD field production (monthly),8,No,FILE,CSV,,field,monthly,"prfNpdidInformationCarrier, prfYear, prfMonth",https://factpages.sodir.no/en/field/TableView/Production/Saleable/Monthly
+1,no_sodir_field_production_monthly,Sodir field production (monthly),8,No,FILE,CSV,,field,monthly,"prfNpdidInformationCarrier, prfYear, prfMonth",https://factpages.sodir.no/en/field/TableView/Production/Saleable/Monthly

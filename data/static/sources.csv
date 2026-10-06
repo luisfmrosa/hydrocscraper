@@ -6,7 +6,7 @@ id,code,name,scope,url
 5,opec_momr,OPEC Monthly Oil Market Report,Public,https://www.opec.org/opec_web/en/publications/338.htm
 6,opec_asb,OPEC Annual Statistical Bulletin,Public,https://www.opec.org/opec_web/en/data_graphs/330.htm
 7,energy_institute,Energy Institute Statistical Review,Public,https://www.energyinst.org/statistical-review
-8,npd,Norway Sokkeldirektoratet (NPD),Public,https://factpages.sodir.no/en/field
+8,no_sodir,Norwegian Offshore Directorate (Sodir),Public,https://www.sodir.no
 9,nsta,UK NSTA,Public,https://www.nstauthority.co.uk/data-and-insights/data/themes/production/
 10,anp,Brazil ANP,Public,https://www.gov.br/anp/pt-br/assuntos/producao-e-royalties/producao
 11,cer,Canada CER,Public,https://www.cer-rec.gc.ca/en/data-analysis/energy-commodities/crude-oil-petroleum-products/statistics/

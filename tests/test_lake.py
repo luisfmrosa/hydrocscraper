@@ -1,4 +1,4 @@
-"""The NPD raw view, Std script, std view, Lake DDL and load scripts (the real
+"""The Sodir raw view, Std script, std view, Lake DDL and load scripts (the real
 SQL files) on a local DuckDB. CSV snapshots are written to a temporary folder
 laid out like the Raw bucket; s3://hydroc-raw/ and s3://hydroc-std/ in the
 scripts are pointed at local folders.
@@ -19,7 +19,7 @@ HEADER = (
     "prfPrdNGLNetMillSm3,prfPrdCondensateNetMillSm3,prfPrdOeNetMillSm3,"
     "prfPrdProducedWaterInFieldMillSm3,prfNpdidInformationCarrier"
 )
-PREFIX = "npd/field_production_monthly/"
+PREFIX = "no_sodir/field_production_monthly/"
 F1 = PREFIX + "year_month=2026-01/field_production_monthly_20260101_1000.csv"
 F2 = PREFIX + "year_month=2026-02/field_production_monthly_20260201_1000.csv"
 F3 = PREFIX + "year_month=2026-03/field_production_monthly_20260301_1000.csv"
@@ -62,14 +62,14 @@ def con(raw, tmp_path_factory):
     con = Env(duckdb.connect(), raw.as_posix() + "/", std_dir.as_posix() + "/")
     for layer in ("lake", "hook"):
         con.execute(f"ATTACH ':memory:' AS {layer}")
-    for path in (DDL / "40_hook.sql", DDL / "41_hook_watermark.sql", std.std_scripts("npd", "field_production_monthly")[0]):
+    for path in (DDL / "40_hook.sql", DDL / "41_hook_watermark.sql", std.std_scripts("no_sodir", "field_production_monthly")[0]):
         run(con, path)
     # The Std step, file by file (as standardize_all does)
     for key in SNAPSHOTS:
         # COPY to a local path needs the folder; S3 doesn't
         (std_dir / std_key(key)).parent.mkdir(parents=True, exist_ok=True)
-        run(con, std.std_scripts("npd", "field_production_monthly")[1], {"raw_file": con.bucket + key})
-    for path in lake.lake_scripts("npd", "field_production_monthly", "full")[:2]:
+        run(con, std.std_scripts("no_sodir", "field_production_monthly")[1], {"raw_file": con.bucket + key})
+    for path in lake.lake_scripts("no_sodir", "field_production_monthly", "full")[:2]:
         run(con, path)
     return con
 
@@ -78,7 +78,7 @@ def std_key(raw_key):
     """Std key of a Raw key of this dataset (same year_month and timestamp)."""
     folder, name = raw_key.rsplit("/", 1)
     ts = name.rsplit("_", 2)[-2] + "_" + name.rsplit("_", 1)[-1].split(".")[0]
-    return folder + "/npd_field_production_monthly_" + ts + ".parquet"
+    return folder + "/no_sodir_field_production_monthly_" + ts + ".parquet"
 
 
 def run(con, path, variables=None):
@@ -90,13 +90,13 @@ def run(con, path, variables=None):
 
 
 def load(con, mode):
-    return run(con, lake.lake_scripts("npd", "field_production_monthly", mode)[2])[0][0]
+    return run(con, lake.lake_scripts("no_sodir", "field_production_monthly", mode)[2])[0][0]
 
 
 def watermark(con, key, day):
     con.execute(
         "INSERT INTO hook.metadata.watermark (source, dataset, load_mode, raw_file, status, updated_at) "
-        "VALUES ('npd', 'field_production_monthly', 'incremental', ?, 'ok', ?)",
+        "VALUES ('no_sodir', 'field_production_monthly', 'incremental', ?, 'ok', ?)",
         [key, datetime(2026, 4, day, tzinfo=timezone.utc)],
     )
 
@@ -104,35 +104,35 @@ def watermark(con, key, day):
 def changes(con, key):
     return sorted(con.execute(
         "SELECT prfInformationCarrier, prfPrdOilNetMillSm3, ___Lake_isdeleted "
-        "FROM lake.npd.field_production_monthly WHERE ___Lake_sourcefile = ?",
+        "FROM lake.no_sodir.field_production_monthly WHERE ___Lake_sourcefile = ?",
         [con.std_bucket + std_key(key)],
     ).fetchall())
 
 
 def lake_rows(con):
     return sorted(con.execute(
-        "SELECT * EXCLUDE (___Lake_sourcefile) FROM lake.npd.field_production_monthly"
+        "SELECT * EXCLUDE (___Lake_sourcefile) FROM lake.no_sodir.field_production_monthly"
     ).fetchall())
 
 
 def test_scripts_resolve():
-    assert [p.relative_to(ROOT).as_posix() for p in std.std_scripts("npd", "field_production_monthly")] == [
-        "sql/ddl/raw_views/020_npd_field_production_monthly.sql",
-        "sql/std/npd/field_production_monthly.sql",
+    assert [p.relative_to(ROOT).as_posix() for p in std.std_scripts("no_sodir", "field_production_monthly")] == [
+        "sql/ddl/raw_views/020_no_sodir_field_production_monthly.sql",
+        "sql/std/no_sodir/field_production_monthly.sql",
     ]
-    assert [p.relative_to(ROOT).as_posix() for p in lake.lake_scripts("npd", "field_production_monthly", "incremental")] == [
-        "sql/ddl/std_views/020_npd_field_production_monthly.sql",
-        "sql/ddl/lake/npd_field_production_monthly.sql",
-        "sql/lake/npd/field_production_monthly_incremental.sql",
+    assert [p.relative_to(ROOT).as_posix() for p in lake.lake_scripts("no_sodir", "field_production_monthly", "incremental")] == [
+        "sql/ddl/std_views/020_no_sodir_field_production_monthly.sql",
+        "sql/ddl/lake/no_sodir_field_production_monthly.sql",
+        "sql/lake/no_sodir/field_production_monthly_incremental.sql",
     ]
     with pytest.raises(ValueError):
-        lake.lake_scripts("npd", "field_production_monthly", "weekly")
+        lake.lake_scripts("no_sodir", "field_production_monthly", "weekly")
 
 
 def test_raw_view_metadata_columns(con):
     row = con.execute(
         "SELECT ___Raw_filename, ___Raw_year_month, ___Raw_file_timestamp "
-        "FROM hook.raw_views.npd_field_production_monthly WHERE ___Raw_filename LIKE '%20260201_1000.csv' LIMIT 1"
+        "FROM hook.raw_views.no_sodir_field_production_monthly WHERE ___Raw_filename LIKE '%20260201_1000.csv' LIMIT 1"
     ).fetchone()
     assert row[0] == con.bucket + F2
     assert row[1] == "2026-02"
@@ -152,7 +152,7 @@ def test_std_writes_one_typed_file_per_raw_file(con):
 
 
 def test_std_fails_on_schema_change(con, raw):
-    # NPD renames a column: without the check it would silently become NULL
+    # Sodir renames a column: without the check it would silently become NULL
     key = PREFIX + "year_month=2026-04/field_production_monthly_20260401_1000.csv"
     path = raw / key
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -160,13 +160,13 @@ def test_std_fails_on_schema_change(con, raw):
     path.write_text(header + "\nEKOFISK,2025,1,1.0,0.5,0,0,1.5,0.1,43506,x\n", encoding="utf-8")
     (Path(con.std_bucket) / std_key(key)).parent.mkdir(parents=True, exist_ok=True)
     with pytest.raises(duckdb.Error, match="missing: prfPrdOilNetMillSm3; unexpected: prfNewColumn, prfPrdOilNetMillSm3_v2"):
-        run(con, std.std_scripts("npd", "field_production_monthly")[1], {"raw_file": con.bucket + key})
+        run(con, std.std_scripts("no_sodir", "field_production_monthly")[1], {"raw_file": con.bucket + key})
 
 
 def test_std_view_metadata_columns(con):
     row = con.execute(
         "SELECT ___Std_filename, ___Std_year_month, ___Std_file_timestamp "
-        "FROM hook.std_views.npd_field_production_monthly WHERE ___Std_filename LIKE '%20260201_1000.parquet' LIMIT 1"
+        "FROM hook.std_views.no_sodir_field_production_monthly WHERE ___Std_filename LIKE '%20260201_1000.parquet' LIMIT 1"
     ).fetchone()
     assert row[0] == con.std_bucket + std_key(F2)
     assert row[1] == "2026-02"
@@ -177,7 +177,7 @@ def test_std_md5_ignores_key_columns(con):
     # EKOFISK in F1 and F2: same values -> same digest; changing only a key would
     # not change it either, since keys are not part of the digest
     md5s = con.execute(
-        "SELECT DISTINCT ___Std_md5 FROM hook.std_views.npd_field_production_monthly "
+        "SELECT DISTINCT ___Std_md5 FROM hook.std_views.no_sodir_field_production_monthly "
         "WHERE prfInformationCarrier = 'EKOFISK'"
     ).fetchall()
     assert len(md5s) == 1
@@ -195,7 +195,7 @@ def test_full_replays_files_oldest_first(con):
 def test_full_rerun_truncates(con):
     load(con, "full")
     assert load(con, "full") == 7
-    assert con.execute("SELECT count(*) FROM lake.npd.field_production_monthly").fetchone()[0] == 7
+    assert con.execute("SELECT count(*) FROM lake.no_sodir.field_production_monthly").fetchone()[0] == 7
 
 
 def test_incremental_matches_full(con):
@@ -213,4 +213,4 @@ def test_incremental_rerun_and_older_file_add_nothing(con):
     assert load(con, "incremental") == 0     # same file again
     watermark(con, F1, 2)
     assert load(con, "incremental") == 0     # older than the Lake's latest load
-    assert con.execute("SELECT count(*) FROM lake.npd.field_production_monthly").fetchone()[0] == 7
+    assert con.execute("SELECT count(*) FROM lake.no_sodir.field_production_monthly").fetchone()[0] == 7

@@ -9,7 +9,7 @@ Input: a dataset with a Lake table, i.e. a row of `data/static/datasets.csv` wit
 
 A frame is a view over **one** Lake table (no joins). Each Lake row (new, changed or deleted) becomes one version; the hooks are added here, never in the Lake.
 
-**Worked example (tested, development):** `sql/ddl/library/npd_field_production_monthly_dev.sql`.
+**Worked example (tested, development):** `sql/ddl/library/no_sodir_field_production_monthly_dev.sql`.
 
 ## 1. Ask
 
@@ -22,7 +22,7 @@ A frame is a view over **one** Lake table (no joins). Each Lake row (new, change
 | Latest view | `library.latest.<code>_dev` | `library.latest.<code>` |
 | Script | `sql/ddl/library/<code>_dev.sql` | `sql/ddl/library/<code>.sql` |
 | Hook column | `VARCHAR`: `'<key_set>' \|\| '\|' \|\| (<hook expression>)::VARCHAR` | `BLOB`: `'<key_set_binary as \x escapes>'::BLOB \|\| encode((<hook expression>)::VARCHAR)` |
-| NPD example | `npd.field\|17196400` | `'\x08\x01'::BLOB \|\| encode(...)` → `0x0801` + bytes of `'17196400'` |
+| Sodir example | `no_sodir.field\|17196400` | `'\x08\x01'::BLOB \|\| encode(...)` → `0x0801` + bytes of `'17196400'` |
 
 Both modes can exist side by side (different names and files).
 

@@ -25,7 +25,7 @@ COPY (FROM read_csv('/opt/duckdb/static/hooks.csv'))
 -- hook_expression (SQL over the dataset's std view columns that gives the
 -- business key, e.g. prfNpdidInformationCarrier). The hook identifiers are
 -- derived here, so they always follow the referenced rows:
---   key_set         <source code>.<business concept code>   (e.g. npd.field)
+--   key_set         <source code>.<business concept code>   (e.g. no_sodir.field)
 --   key_set_binary  source id (1 byte) || business concept id (1 byte)
 --                   (e.g. 0x0801); ids above 255 are rejected
 -- Any invalid row (duplicate id, unknown dataset or business concept, empty

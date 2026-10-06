@@ -4,8 +4,8 @@ hydrocscraper — CLI entry point.
 Usage:
     # Download into Raw, then load the Lake
     python main.py --mode full
-    python main.py --mode full --sources npd
-    python main.py --mode incremental --datasets npd_field_production_monthly
+    python main.py --mode full --sources no_sodir
+    python main.py --mode incremental --datasets no_sodir_field_production_monthly
     python main.py --mode full --rebuild-std     # after changing a Std script
 
 DuckLake objects are created by the DuckDB server at startup (sql/ddl/);

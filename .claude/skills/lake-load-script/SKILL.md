@@ -10,8 +10,8 @@ Input: a row of `data/static/datasets.csv` with keys, its `code` and `keys`. Its
 Naming: `<table>` is the code without `<source>_` (`<dataset>` or `<dataset>_<sub_table>`); `<dataset>` is always the **downloaded** dataset, which owns the watermark.
 
 **Worked examples (tested):**
-- `sql/lake/npd/field_production_monthly_incremental.sql`
-- `sql/lake/npd/field_production_monthly_full.sql`
+- `sql/lake/no_sodir/field_production_monthly_incremental.sql`
+- `sql/lake/no_sodir/field_production_monthly_full.sql`
 
 Copy them and replace only: the table and view names, the key columns, the data column lists, the watermark filter (`'<source>'` / `'<dataset>'`), the Std file path built from the watermark, and the `'<code>'` datasource literal. Keep the logic unchanged.
 
@@ -70,7 +70,7 @@ Join keys with `=` (keys are never NULL; the std view skill checks this). Always
 
 ## Verify
 
-1. **Tests:** `tests/test_lake.py` runs the NPD raw view, Std script, std view and Lake scripts on a local DuckDB with synthetic snapshots. Add an equivalent test for the new table (copy the fixtures, adapt the columns), or at least check these properties:
+1. **Tests:** `tests/test_lake.py` runs the Sodir raw view, Std script, std view and Lake scripts on a local DuckDB with synthetic snapshots. Add an equivalent test for the new table (copy the fixtures, adapt the columns), or at least check these properties:
    - full = 0 deletions on the first file;
    - incremental file by file gives **the same rows** as full;
    - rerunning incremental adds 0.

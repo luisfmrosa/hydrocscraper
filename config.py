@@ -38,9 +38,9 @@ HTTP_BACKOFF_MAX = 30  # seconds
 # (<source>_<dataset>, as in data/static/datasets.csv).
 # Used by main.py to resolve --datasets and --sources arguments.
 SCRAPER_REGISTRY = {
-    "npd_field_production_monthly": {
-        "source": "npd",
-        "class": "scrapers.npd.field_production_monthly.NpdFieldProductionMonthly",
+    "no_sodir_field_production_monthly": {
+        "source": "no_sodir",
+        "class": "scrapers.no_sodir.field_production_monthly.NoSodirFieldProductionMonthly",
     },
     # More datasets added here as they are implemented
 }

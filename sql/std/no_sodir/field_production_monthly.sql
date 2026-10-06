@@ -1,8 +1,8 @@
--- Std: NPD monthly field production (tabular, no flattening).
+-- Std: Sodir monthly field production (tabular, no flattening).
 -- Converts one Raw file, given by the runner as the variable raw_file (full
 -- s3:// path), to one typed Parquet file in Std with the Raw file's
 -- year_month and timestamp:
---   s3://hydroc-std/npd/field_production_monthly/year_month=<ym>/npd_field_production_monthly_<ts>.parquet
+--   s3://hydroc-std/no_sodir/field_production_monthly/year_month=<ym>/no_sodir_field_production_monthly_<ts>.parquet
 -- Keys first, then the other columns. Rerunning overwrites the same file.
 --
 -- Checks (each fails the step; the watermark stays at 'raw' and the next run
@@ -32,9 +32,9 @@ FROM diff
 HAVING count(*) > 0;
 
 SET VARIABLE std_file =
-    's3://hydroc-std/npd/field_production_monthly/year_month='
+    's3://hydroc-std/no_sodir/field_production_monthly/year_month='
     || regexp_extract(getvariable('raw_file'), 'year_month=([^/]+)/', 1)
-    || '/npd_field_production_monthly_'
+    || '/no_sodir_field_production_monthly_'
     || regexp_extract(getvariable('raw_file'), '_(\d{8}_\d{4})\.[^./]+$', 1)
     || '.parquet';
 
@@ -50,6 +50,6 @@ COPY (
         prfPrdCondensateNetMillSm3::DOUBLE              AS prfPrdCondensateNetMillSm3,
         prfPrdOeNetMillSm3::DOUBLE                      AS prfPrdOeNetMillSm3,
         prfPrdProducedWaterInFieldMillSm3::DOUBLE       AS prfPrdProducedWaterInFieldMillSm3
-    FROM hook.raw_views.npd_field_production_monthly
+    FROM hook.raw_views.no_sodir_field_production_monthly
     WHERE ___Raw_filename = getvariable('raw_file')
 ) TO (getvariable('std_file')) (FORMAT parquet);

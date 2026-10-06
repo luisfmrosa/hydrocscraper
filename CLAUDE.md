@@ -19,8 +19,8 @@ It all runs on Incus. See `docs/architecture.md`.
 
 ```bash
 python main.py --mode full                        # full load
-python main.py --mode full --sources npd          # every dataset of a source
-python main.py --mode incremental --datasets npd_field_production_monthly
+python main.py --mode full --sources no_sodir          # every dataset of a source
+python main.py --mode incremental --datasets no_sodir_field_production_monthly
 python main.py --mode full --rebuild-std             # after changing a Std script
 pytest                                            # tests
 ```

@@ -48,19 +48,19 @@ def test_ddl_is_idempotent(con):
 
 def test_watermark_roundtrip(con):
     ex = _executor(con)
-    assert read_watermark("npd", "ds", execute=ex) == {}
+    assert read_watermark("no_sodir", "ds", execute=ex) == {}
 
-    write_watermark("npd", "ds", execute=ex, load_mode="full",
+    write_watermark("no_sodir", "ds", execute=ex, load_mode="full",
                     last_period_fetched="2026-07", status="ok", raw_file="k1")
-    write_watermark("npd", "ds", execute=ex, load_mode="incremental",
+    write_watermark("no_sodir", "ds", execute=ex, load_mode="incremental",
                     last_period_fetched="2026-08", status="ok", raw_file="k'2")
 
     assert con.sql("SELECT count(*) FROM hook.metadata.watermark").fetchone()[0] == 2
-    wm = read_watermark("npd", "ds", execute=ex)
+    wm = read_watermark("no_sodir", "ds", execute=ex)
     assert wm["last_period_fetched"] == "2026-08"
     assert wm["raw_file"] == "k'2"
 
 
 def test_watermark_rejects_unknown_fields(con):
     with pytest.raises(ValueError):
-        write_watermark("npd", "ds", execute=_executor(con), bogus=1)
+        write_watermark("no_sodir", "ds", execute=_executor(con), bogus=1)

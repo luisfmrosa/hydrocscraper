@@ -5,9 +5,9 @@ description: Write the raw view (hook.raw_views.<source>_<dataset>) that maps a 
 
 # Raw view for a dataset
 
-Input: the dataset code `<source>_<dataset>` (e.g. `npd_field_production_monthly`). Every dataset has exactly one raw view, whatever its shape: it maps the Raw files **as received** and is read only by the dataset's Std script (`std-script` skill). Typing, flattening and checks happen there, not here.
+Input: the dataset code `<source>_<dataset>` (e.g. `no_sodir_field_production_monthly`). Every dataset has exactly one raw view, whatever its shape: it maps the Raw files **as received** and is read only by the dataset's Std script (`std-script` skill). Typing, flattening and checks happen there, not here.
 
-**Worked example (tested):** `sql/ddl/raw_views/020_npd_field_production_monthly.sql`. Read it first and follow its structure.
+**Worked example (tested):** `sql/ddl/raw_views/020_no_sodir_field_production_monthly.sql`. Read it first and follow its structure.
 
 ## Which files it reads
 

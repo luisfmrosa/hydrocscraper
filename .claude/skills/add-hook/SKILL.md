@@ -15,7 +15,7 @@ A hook ties a **business concept** to a **dataset**, through a **hook expression
 | `hook_expression` | SQL expression over the dataset's std view columns, e.g. `prfNpdidInformationCarrier` |
 
 The hook identifiers are **not** in the file. `sql/ddl/45_hook_static.sql` derives them at each server start:
-- `key_set` = `<source code>.<business concept code>` (the dataset's source), e.g. `npd.field`;
+- `key_set` = `<source code>.<business concept code>` (the dataset's source), e.g. `no_sodir.field`;
 - `key_set_binary` = source id as one byte || business concept id as one byte, e.g. `0x0801`.
 
 Never add `key_set` columns to the CSV. Hooks are metadata for the **Library** layer, where the frame views carry them as `HK_<NAME>` columns (`add-frame` skill). They never go into Lake tables, which hold only incremental changes: adding a hook changes no Lake table or load script.
@@ -40,7 +40,7 @@ Stop and tell the user if any of these fails:
   ```
   The first count must be 0. If the std view doesn't exist yet (new dataset), check the expression against the Std script's columns and run the query once data is loaded.
 
-Datasets of the same source share `key_set` for a given concept (`npd.field` for every NPD dataset). That's intended: it's how their rows meet on the hook. Mention it if the user expects one key set per dataset.
+Datasets of the same source share `key_set` for a given concept (`no_sodir.field` for every Sodir dataset). That's intended: it's how their rows meet on the hook. Mention it if the user expects one key set per dataset.
 
 ## 3. Write
 

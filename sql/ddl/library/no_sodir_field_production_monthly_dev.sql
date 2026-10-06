@@ -1,12 +1,12 @@
--- Library views (development): NPD monthly field production.
--- Frame:  library.frame.npd_field_production_monthly_dev   every version (SCD2)
--- Latest: library.latest.npd_field_production_monthly_dev  current versions only
--- Source: lake.npd.field_production_monthly (one Lake table, no joins).
+-- Library views (development): Sodir monthly field production.
+-- Frame:  library.frame.no_sodir_field_production_monthly_dev   every version (SCD2)
+-- Latest: library.latest.no_sodir_field_production_monthly_dev  current versions only
+-- Source: lake.no_sodir.field_production_monthly (one Lake table, no joins).
 -- Business key: prfNpdidInformationCarrier, prfYear, prfMonth
 --
 -- Hooks (data/static/hooks.csv), development mode: VARCHAR
 -- '<key_set>|<hook expression>'
---   HK_FIELD  hook 1  key_set npd.field  expression prfNpdidInformationCarrier
+--   HK_FIELD  hook 1  key_set no_sodir.field  expression prfNpdidInformationCarrier
 --
 -- Frame columns: the hooks, the Lake table's data columns, its lineage
 -- columns (___Lake_md5, ___Lake_datasource, ___Lake_sourcefile), then
@@ -18,9 +18,9 @@
 -- CREATE OR REPLACE: the definition must follow the repository. Fails at
 -- server start while the Lake table doesn't exist; storage/lake.py re-runs
 -- this script after every Lake load.
-CREATE OR REPLACE VIEW library.frame.npd_field_production_monthly_dev AS
+CREATE OR REPLACE VIEW library.frame.no_sodir_field_production_monthly_dev AS
 SELECT
-    'npd.field' || '|' || (prfNpdidInformationCarrier)::VARCHAR   AS HK_FIELD,
+    'no_sodir.field' || '|' || (prfNpdidInformationCarrier)::VARCHAR   AS HK_FIELD,
     prfNpdidInformationCarrier,
     prfYear,
     prfMonth,
@@ -40,10 +40,10 @@ SELECT
         ORDER BY ___Lake_load_timestamp
     )                                                               AS ___Effective_To,
     ___Lake_isdeleted                                               AS ___Is_Deleted
-FROM lake.npd.field_production_monthly;
+FROM lake.no_sodir.field_production_monthly;
 
-CREATE OR REPLACE VIEW library.latest.npd_field_production_monthly_dev AS
+CREATE OR REPLACE VIEW library.latest.no_sodir_field_production_monthly_dev AS
 SELECT * EXCLUDE (___Effective_From, ___Effective_To, ___Is_Deleted)
-FROM library.frame.npd_field_production_monthly_dev
+FROM library.frame.no_sodir_field_production_monthly_dev
 WHERE ___Effective_To = TIMESTAMPTZ '9999-12-31'
   AND NOT ___Is_Deleted;

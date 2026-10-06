@@ -43,8 +43,8 @@ def test_hooks_derive_key_sets(static, tmp_path):
         "SELECT id, business_concept_id, dataset_id, hook_expression, key_set, key_set_binary "
         "FROM hook.metadata.hooks"
     ).fetchall()
-    # dataset 1 is NPD (source 8), business concept 1 is field
-    assert rows == [(1, 1, 1, "prfNpdidInformationCarrier", "npd.field", b"\x08\x01")]
+    # dataset 1 is Sodir (source 8), business concept 1 is field
+    assert rows == [(1, 1, 1, "prfNpdidInformationCarrier", "no_sodir.field", b"\x08\x01")]
 
 
 HEADER = "id,business_concept_id,dataset_id,hook_expression\n"

@@ -1,4 +1,4 @@
-"""The NPD Library frame and latest views (development) on a local DuckDB, over
+"""The Sodir Library frame and latest views (development) on a local DuckDB, over
 the Lake built by the full load of tests/test_lake.py's snapshots:
 
   F1 (Jan): EKOFISK 1.0, TROLL 2.0, GULLFAKS 3.0
@@ -13,8 +13,8 @@ import pytest
 from storage import lake
 from test_lake import DDL, con, load, raw, run  # noqa: F401  (fixtures)
 
-FRAME = "library.frame.npd_field_production_monthly_dev"
-LATEST = "library.latest.npd_field_production_monthly_dev"
+FRAME = "library.frame.no_sodir_field_production_monthly_dev"
+LATEST = "library.latest.no_sodir_field_production_monthly_dev"
 JAN, FEB, MAR = (datetime(2026, m, 1, 10, 0, tzinfo=timezone.utc) for m in (1, 2, 3))
 OPEN = datetime(9999, 12, 31, tzinfo=timezone.utc)
 
@@ -24,7 +24,7 @@ def lib(con):  # noqa: F811
     con.execute("ATTACH ':memory:' AS library")
     run(con, DDL / "20_library.sql")
     load(con, "full")
-    for path in lake.library_scripts("npd", "field_production_monthly"):
+    for path in lake.library_scripts("no_sodir", "field_production_monthly"):
         run(con, path)
     return con
 
@@ -38,8 +38,8 @@ def versions(con, field):
 
 
 def test_library_scripts_resolve():
-    assert [p.name for p in lake.library_scripts("npd", "field_production_monthly")] == [
-        "npd_field_production_monthly_dev.sql"
+    assert [p.name for p in lake.library_scripts("no_sodir", "field_production_monthly")] == [
+        "no_sodir_field_production_monthly_dev.sql"
     ]
 
 
@@ -62,10 +62,10 @@ def test_one_open_version_per_key(lib):
 def test_hook_column(lib):
     hooks = lib.execute(f"SELECT DISTINCT prfInformationCarrier, HK_FIELD FROM {FRAME} ORDER BY 1").fetchall()
     assert hooks == [
-        ("EKOFISK", "npd.field|43506"),
-        ("GULLFAKS", "npd.field|43686"),
-        ("OSEBERG", "npd.field|43625"),
-        ("TROLL", "npd.field|46437"),
+        ("EKOFISK", "no_sodir.field|43506"),
+        ("GULLFAKS", "no_sodir.field|43686"),
+        ("OSEBERG", "no_sodir.field|43625"),
+        ("TROLL", "no_sodir.field|46437"),
     ]
 
 
@@ -80,10 +80,10 @@ def test_latest_has_current_versions_only(lib):
 def test_latest_excludes_a_key_deleted_last(lib):
     # A fourth file without OSEBERG: the load appends a deletion row
     lib.execute(
-        "INSERT INTO lake.npd.field_production_monthly "
+        "INSERT INTO lake.no_sodir.field_production_monthly "
         "SELECT * REPLACE (TIMESTAMPTZ '2026-04-01 10:00:00+00' AS ___Lake_load_timestamp, true AS ___Lake_isdeleted) "
         "FROM (VALUES (43625::BIGINT, 2025, 1, 'OSEBERG', 4.0, 0.5, 0.0, 0.0, 1.5, 0.1, 'x', NULL::TIMESTAMPTZ, "
-        "'npd_field_production_monthly', 'f4', false)) "
+        "'no_sodir_field_production_monthly', 'f4', false)) "
         "t(prfNpdidInformationCarrier, prfYear, prfMonth, prfInformationCarrier, prfPrdOilNetMillSm3, "
         "prfPrdGasNetBillSm3, prfPrdNGLNetMillSm3, prfPrdCondensateNetMillSm3, prfPrdOeNetMillSm3, "
         "prfPrdProducedWaterInFieldMillSm3, ___Lake_md5, ___Lake_load_timestamp, ___Lake_datasource, "

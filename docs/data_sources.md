@@ -33,7 +33,7 @@ Data quality ratings:
 
 | # | Country | Agency | URL | Format | Granularity | Periodicity | Data Quality | Notes |
 |---|---------|--------|-----|--------|-------------|-------------|--------------|-------|
-| 8 | Norway | Sokkeldirektoratet (NPD) | https://factpages.sodir.no/en/field | CSV (FactPages) | Field / Well | Monthly | Excellent | Daily-synced FactPages; full production history; open licence (NLOD) |
+| 8 | Norway | Norwegian Offshore Directorate (Sodir) | https://factpages.sodir.no/en/field | CSV (FactPages) | Field / Well | Monthly | Excellent | Formerly the Norwegian Petroleum Directorate (NPD; npd.no now redirects to sodir.no). Daily-synced FactPages; full production history; open licence (NLOD) |
 | 9 | United Kingdom | NSTA | https://www.nstauthority.co.uk/data-and-insights/data/themes/production/ | CSV | Field | Monthly | Excellent | Full UKCS field history; export via dashboard or data.gov.uk |
 | 10 | Brazil | ANP | https://www.gov.br/anp/pt-br/assuntos/producao-e-royalties/producao | XLSX / BI portal | Field / Well | Monthly | Good | Monthly bulletin; BI portal for interactive access; some PDF parsing needed |
 | 11 | Canada | CER | https://www.cer-rec.gc.ca/en/data-analysis/energy-commodities/crude-oil-petroleum-products/statistics/ | XLSX / CSV | Province | Monthly | Good | Province-level only (no field); open.canada.ca portal |
@@ -50,7 +50,7 @@ Data quality ratings:
 |-------|---------|
 | Global country-level | JODI Oil, JODI Gas, EIA International, IEA, Energy Institute |
 | OPEC members | OPEC MOMR, OPEC ASB |
-| Field/well (Europe) | Norway NPD, UK NSTA, Netherlands NLOG |
+| Field/well (Europe) | Norway Sodir, UK NSTA, Netherlands NLOG |
 | Field/well (Americas) | Brazil ANP, Canada CER, Mexico CNH, Colombia ANH, Argentina SE |
 
 ---

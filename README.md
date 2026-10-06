@@ -37,7 +37,7 @@ The stack runs on Incus: three containers (Postgres, a DuckDB quack server and t
 
 | Country | Agency | Granularity | Data Quality |
 |---------|--------|-------------|--------------|
-| Norway | Sokkeldirektoratet (NPD) | Field / Well | Excellent |
+| Norway | Norwegian Offshore Directorate (Sodir) | Field / Well | Excellent |
 | United Kingdom | NSTA | Field | Excellent |
 | Brazil | ANP | Field / Well | Good |
 | Canada | CER | Province | Good |
@@ -94,15 +94,15 @@ Local development: `pip install -r requirements.txt`, then copy `.env.example` t
 # Full: download the complete dataset into Raw, convert Raw files that have no Std file yet, then rebuild the Lake
 # (replaying every Std file, so the history of changes between downloads is kept)
 python main.py --mode full                                       # every dataset
-python main.py --mode full --sources npd                         # every dataset of a source
-python main.py --mode full --datasets npd_field_production_monthly
+python main.py --mode full --sources no_sodir                         # every dataset of a source
+python main.py --mode full --datasets no_sodir_field_production_monthly
 
 # Incremental: store a file only when new data appears, convert it to Std, then load its changes into the Lake
 # (first finishes a file left half-way by a failed run)
 python main.py --mode incremental
 
 # After changing a Std script (or to recover from a schema change): convert every Raw file again
-python main.py --mode full --rebuild-std --datasets npd_field_production_monthly
+python main.py --mode full --rebuild-std --datasets no_sodir_field_production_monthly
 
 # Verbose / debug logging
 python main.py --mode full -v

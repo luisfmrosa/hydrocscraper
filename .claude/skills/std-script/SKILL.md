@@ -9,7 +9,7 @@ Input: the dataset code `<source>_<dataset>`, its raw view (`raw-view` skill), a
 
 Every dataset has exactly one Std script. It is dataset-specific: write the logic for this source's structure.
 
-**Worked example (tested, tabular):** `sql/std/npd/field_production_monthly.sql`.
+**Worked example (tested, tabular):** `sql/std/no_sodir/field_production_monthly.sql`.
 
 ## Contract
 

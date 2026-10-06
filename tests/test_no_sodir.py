@@ -1,4 +1,4 @@
-from scrapers.npd.field_production_monthly import _latest_period_in_file
+from scrapers.no_sodir.field_production_monthly import _latest_period_in_file
 
 
 def test_latest_period_in_file(tmp_path):

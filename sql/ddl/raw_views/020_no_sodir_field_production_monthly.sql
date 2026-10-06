@@ -1,5 +1,5 @@
--- Raw view: NPD monthly field production, every file in Raw, as received.
--- Read by sql/std/npd/field_production_monthly.sql (one file at a time).
+-- Raw view: Sodir monthly field production, every file in Raw, as received.
+-- Read by sql/std/no_sodir/field_production_monthly.sql (one file at a time).
 --
 -- Data columns: every source column, named as in the file, as text
 -- (all_varchar): typing and checks happen in the Std script. Then the Raw
@@ -11,7 +11,7 @@
 -- CREATE OR REPLACE: the definition must follow the repository. Fails while
 -- the dataset has no files yet (no files to bind); the app re-runs this
 -- script before every Std step.
-CREATE OR REPLACE VIEW hook.raw_views.npd_field_production_monthly AS
+CREATE OR REPLACE VIEW hook.raw_views.no_sodir_field_production_monthly AS
 SELECT
     prfInformationCarrier,
     prfYear,
@@ -28,7 +28,7 @@ SELECT
     strptime(regexp_extract(filename, '_(\d{8}_\d{4})\.[^./]+$', 1) || ' +0000',
              '%Y%m%d_%H%M %z')                      AS ___Raw_file_timestamp
 FROM read_csv(
-    's3://hydroc-raw/npd/field_production_monthly/*/*.csv',
+    's3://hydroc-raw/no_sodir/field_production_monthly/*/*.csv',
     hive_partitioning = true,
     filename = true,
     union_by_name = true,

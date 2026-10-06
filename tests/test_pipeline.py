@@ -8,7 +8,7 @@ from storage import datasets, std
 
 
 class FakeScraper(base.BaseScraper):
-    source = "npd"
+    source = "no_sodir"
     dataset = "field_production_monthly"
     new_data = True
 
@@ -36,9 +36,9 @@ def run(monkeypatch):
 
 
 def test_tables_of_a_tabular_dataset():
-    assert datasets.tables("npd_field_production_monthly") == ["npd_field_production_monthly"]
+    assert datasets.tables("no_sodir_field_production_monthly") == ["no_sodir_field_production_monthly"]
     with pytest.raises(KeyError):
-        datasets.tables("npd_unknown")
+        datasets.tables("no_sodir_unknown")
 
 
 def test_tables_of_a_flattened_dataset(monkeypatch):
@@ -70,30 +70,30 @@ def test_full_rebuild_std(run):
 
 
 def test_std_path_keeps_raw_period_and_timestamp():
-    raw = "s3://hydroc-raw/npd/field_production_monthly/year_month=2026-09/field_production_monthly_20260929_1000.csv"
-    assert std.std_path("npd", "field_production_monthly", raw) == (
-        "s3://hydroc-std/npd/field_production_monthly/year_month=2026-09/"
-        "npd_field_production_monthly_20260929_1000.parquet"
+    raw = "s3://hydroc-raw/no_sodir/field_production_monthly/year_month=2026-09/field_production_monthly_20260929_1000.csv"
+    assert std.std_path("no_sodir", "field_production_monthly", raw) == (
+        "s3://hydroc-std/no_sodir/field_production_monthly/year_month=2026-09/"
+        "no_sodir_field_production_monthly_20260929_1000.parquet"
     )
     assert std.std_path("x", "doc_wells", raw).endswith("/x/doc_wells/year_month=2026-09/x_doc_wells_20260929_1000.parquet")
     with pytest.raises(ValueError):
-        std.std_path("npd", "t", "s3://hydroc-raw/npd/t/no_partition.csv")
+        std.std_path("no_sodir", "t", "s3://hydroc-raw/no_sodir/t/no_partition.csv")
 
 
 def test_standardize_all_skips_converted_files(monkeypatch):
-    raw = "s3://hydroc-raw/npd/t/year_month=2026-0{m}/t_2026010{m}_1000.csv"
+    raw = "s3://hydroc-raw/no_sodir/t/year_month=2026-0{m}/t_2026010{m}_1000.csv"
     files = [raw.format(m=m) for m in (1, 2, 3)]
     ran = []
     monkeypatch.setattr(std, "std_scripts", lambda s, d: ["raw_view", "std_script"])
     monkeypatch.setattr(std.scripts, "run", lambda path, variables=None: ran.append((path, variables)))
     monkeypatch.setattr(std, "raw_files", lambda s, d: files)
-    monkeypatch.setattr(std, "std_files", lambda s, tables: {std.std_path("npd", "t", files[0])})
+    monkeypatch.setattr(std, "std_files", lambda s, tables: {std.std_path("no_sodir", "t", files[0])})
 
-    assert std.standardize_all("npd", "t", ["t"]) == 2
+    assert std.standardize_all("no_sodir", "t", ["t"]) == 2
     assert [v["raw_file"] for p, v in ran if p == "std_script"] == files[1:]
 
     ran.clear()
-    assert std.standardize_all("npd", "t", ["t"], rebuild=True) == 3
+    assert std.standardize_all("no_sodir", "t", ["t"], rebuild=True) == 3
 
 
 def test_is_new_content(run, tmp_path, monkeypatch):

@@ -16,17 +16,17 @@
 .read 45_hook_static.sql
 
 -- Lake tables, one script per dataset
-.read lake/npd_field_production_monthly.sql
+.read lake/no_sodir_field_production_monthly.sql
 
 -- Raw and std views fail while their S3 prefix is still empty ("No files
 -- found"). With bail off the server still starts; the app re-runs the raw
 -- view before every Std step and the std view before every Lake load.
-.read raw_views/020_npd_field_production_monthly.sql
-.read std_views/020_npd_field_production_monthly.sql
+.read raw_views/020_no_sodir_field_production_monthly.sql
+.read std_views/020_no_sodir_field_production_monthly.sql
 
 -- Library frame and latest views, one script per Lake table and mode
 -- (<code>.sql production, <code>_dev.sql development). They fail until the
 -- Lake table exists; the app re-runs them after every Lake load.
-.read library/npd_field_production_monthly_dev.sql
+.read library/no_sodir_field_production_monthly_dev.sql
 
 .read 99_serve.sql

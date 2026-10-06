@@ -1,4 +1,4 @@
--- Full Lake load: NPD monthly field production.
+-- Full Lake load: Sodir monthly field production.
 -- Empties the Lake table, then replays every file in Std from oldest to
 -- newest in one set-based statement. The result is the same as running the
 -- incremental load once per file, in order:
@@ -7,9 +7,9 @@
 --   - deletion rows: in the file right after a key's last appearance
 --     (repeating its last known values)
 -- Run by the app after the full download and the Std rebuild.
-TRUNCATE lake.npd.field_production_monthly;
+TRUNCATE lake.no_sodir.field_production_monthly;
 
-INSERT INTO lake.npd.field_production_monthly (
+INSERT INTO lake.no_sodir.field_production_monthly (
     prfNpdidInformationCarrier, prfYear, prfMonth, prfInformationCarrier,
     prfPrdOilNetMillSm3, prfPrdGasNetBillSm3, prfPrdNGLNetMillSm3,
     prfPrdCondensateNetMillSm3, prfPrdOeNetMillSm3, prfPrdProducedWaterInFieldMillSm3,
@@ -21,7 +21,7 @@ WITH files AS (
            row_number() OVER (ORDER BY ___Std_file_timestamp, ___Std_filename) AS file_seq
     FROM (
         SELECT DISTINCT ___Std_filename, ___Std_file_timestamp
-        FROM hook.std_views.npd_field_production_monthly
+        FROM hook.std_views.no_sodir_field_production_monthly
     )
 ),
 observations AS (
@@ -30,7 +30,7 @@ observations AS (
            lag(r.___Std_md5) OVER k AS prev_md5,
            lag(f.file_seq)   OVER k AS prev_seq,
            lead(f.file_seq)  OVER k AS next_seq
-    FROM hook.std_views.npd_field_production_monthly r
+    FROM hook.std_views.no_sodir_field_production_monthly r
     JOIN files f USING (___Std_filename, ___Std_file_timestamp)
     WINDOW k AS (
         PARTITION BY r.prfNpdidInformationCarrier, r.prfYear, r.prfMonth
@@ -42,7 +42,7 @@ SELECT
     o.prfNpdidInformationCarrier, o.prfYear, o.prfMonth, o.prfInformationCarrier,
     o.prfPrdOilNetMillSm3, o.prfPrdGasNetBillSm3, o.prfPrdNGLNetMillSm3,
     o.prfPrdCondensateNetMillSm3, o.prfPrdOeNetMillSm3, o.prfPrdProducedWaterInFieldMillSm3,
-    o.___Std_md5, o.___Std_file_timestamp, 'npd_field_production_monthly', o.___Std_filename, false
+    o.___Std_md5, o.___Std_file_timestamp, 'no_sodir_field_production_monthly', o.___Std_filename, false
 FROM observations o
 WHERE o.prev_seq IS NULL                   -- first appearance
    OR o.prev_seq < o.file_seq - 1          -- reappears after being deleted
@@ -53,7 +53,7 @@ SELECT
     o.prfNpdidInformationCarrier, o.prfYear, o.prfMonth, o.prfInformationCarrier,
     o.prfPrdOilNetMillSm3, o.prfPrdGasNetBillSm3, o.prfPrdNGLNetMillSm3,
     o.prfPrdCondensateNetMillSm3, o.prfPrdOeNetMillSm3, o.prfPrdProducedWaterInFieldMillSm3,
-    o.___Std_md5, nf.___Std_file_timestamp, 'npd_field_production_monthly', nf.___Std_filename, true
+    o.___Std_md5, nf.___Std_file_timestamp, 'no_sodir_field_production_monthly', nf.___Std_filename, true
 FROM observations o
 JOIN files nf ON nf.file_seq = o.file_seq + 1
 WHERE o.next_seq IS NULL OR o.next_seq > o.file_seq + 1;

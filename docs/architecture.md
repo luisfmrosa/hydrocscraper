@@ -45,8 +45,8 @@ The same stack can be deployed two ways (see *Infrastructure* below): on an Incu
 |-------|---------|----------|
 | **Raw** | `hydroc-raw` (plain bucket) | Files exactly as received, plus `metadata/` (copies of the static Hook metadata) |
 | **Std** | `hydroc-std` (plain bucket) | Every Raw file as typed Parquet, flattened when not tabular. Derived from Raw; the Lake loads from it |
-| **Lake** | DuckLake `lake`, one schema per source | Append-only change records per Std table, e.g. `lake.npd.field_production_monthly` (see *Lake tables*) |
-| **Library** | DuckLake `library`, schemas `frame` and `latest` | SCD2 frame views over one Lake table each, with the hook columns, and latest-version views, e.g. `library.frame.npd_field_production_monthly_dev` (see *Library views*) |
+| **Lake** | DuckLake `lake`, one schema per source | Append-only change records per Std table, e.g. `lake.no_sodir.field_production_monthly` (see *Lake tables*) |
+| **Library** | DuckLake `library`, schemas `frame` and `latest` | SCD2 frame views over one Lake table each, with the hook columns, and latest-version views, e.g. `library.frame.no_sodir_field_production_monthly_dev` (see *Library views*) |
 | **DWH** | DuckLake `dwh`, schema `supply` | Business views and models |
 | **Hook** | DuckLake `hook`, schemas `metadata`, `raw_views` and `std_views` | `metadata`: `sources`, `datasets`, `business_concepts`, `hooks` (static, from `data/static/`) and `watermark`. `raw_views`: one view per dataset over its Raw files. `std_views`: one view per Std table over its Parquet files |
 
@@ -60,7 +60,7 @@ Every layer has its own bucket, `hydroc-<layer>`. Raw and Std are plain buckets 
 ```
 hydroc-raw/
 ├── <source>/<dataset>/year_month=<YYYY-MM>/<stem>_<YYYYMMDD_HHmm><ext>
-│     e.g. npd/field_production_monthly/year_month=2026-09/field_production_monthly_20260929_1000.csv
+│     e.g. no_sodir/field_production_monthly/year_month=2026-09/field_production_monthly_20260929_1000.csv
 └── metadata/
     └── <name>/<name>.csv        sources, datasets, business_concepts, hooks
 ```
@@ -73,13 +73,13 @@ hydroc-raw/
 ```
 hydroc-std/
 └── <source>/<table>/year_month=<YYYY-MM>/<source>_<table>_<YYYYMMDD_HHmm>.parquet
-      e.g. npd/field_production_monthly/year_month=2026-09/npd_field_production_monthly_20260929_1000.parquet
+      e.g. no_sodir/field_production_monthly/year_month=2026-09/no_sodir_field_production_monthly_20260929_1000.parquet
 ```
 
 - `<table>` is the dataset, or `<dataset>_<sub_table>` for a flattened table of a non-tabular dataset.
 - One file per Std table per Raw file, with the Raw file's `year_month` and timestamp. Std is derived from Raw and can always be rebuilt from it: a full load converts the Raw files that have no Std file yet, and `--rebuild-std` converts them all again.
 
-**Why Std.** Every Lake table loads the same way, from typed Parquet, and schema and data-quality checks have one place: the entry to Std. Std duplicates Raw; this is accepted because Parquet is compressed (for NPD, Std takes about 35% of the Raw CSV size) and Std is a rebuildable cache, never a source of truth. Std keeps its full history, since the Lake's full load replays every Std file.
+**Why Std.** Every Lake table loads the same way, from typed Parquet, and schema and data-quality checks have one place: the entry to Std. Std duplicates Raw; this is accepted because Parquet is compressed (for Sodir, Std takes about 35% of the Raw CSV size) and Std is a rebuildable cache, never a source of truth. Std keeps its full history, since the Lake's full load replays every Std file.
 
 **Flattened tables.** Flattening happens **only** for non-tabular datasets (e.g. JSON with nested structures). It is part of the Std script and is dataset-specific: one Std table per independent structure, including the top level.
 - Every table except the top level has an extra column `parent` linking it to its parent table: the parent row's business key values, cast to text and joined with the ASCII unit separator (`chr(31)`).
@@ -94,7 +94,7 @@ hydroc-std/
 
 | Column | Description |
 |--------|-------------|
-| `source`, `dataset` | For example `npd`, `field_production_monthly` |
+| `source`, `dataset` | For example `no_sodir`, `field_production_monthly` |
 | `load_mode` | `full` or `incremental` |
 | `last_period_fetched` | `YYYY-MM` |
 | `status` | Step reached by `raw_file`: `raw` (stored), `std` (converted), `lake` (loaded). Rows from before the Std layer have `ok` (done). |
@@ -112,13 +112,13 @@ Update `sources.csv` and `datasets.csv` whenever a dataset is added, and `busine
 | File | Column | Description | Example |
 |------|--------|-------------|---------|
 | `sources.csv` | `id` | Surrogate key | `8` |
-| | `code` | Natural key | `npd` |
-| | `name` | Name of the data source | `Norway Sokkeldirektoratet (NPD)` |
+| | `code` | Natural key | `no_sodir` |
+| | `name` | Name of the data source | `Norwegian Offshore Directorate (Sodir)` |
 | | `scope` | `Public` or `Private` | `Public` |
-| | `url` | Website | `https://factpages.sodir.no/en/field` |
+| | `url` | Website | `https://www.sodir.no` |
 | `datasets.csv` | `id` | Surrogate key | `1` |
-| | `code` | Natural key: `<source>_<dataset>`, or `<source>_<dataset>_<sub_table>` | `npd_field_production_monthly` |
-| | `name` | Name of the dataset | `NPD field production (monthly)` |
+| | `code` | Natural key: `<source>_<dataset>`, or `<source>_<dataset>_<sub_table>` | `no_sodir_field_production_monthly` |
+| | `name` | Name of the dataset | `Sodir field production (monthly)` |
 | | `source_id` | → `sources.id` | `8` |
 | | `copyright` | `Yes` or `No` | `No` |
 | | `type` | `FILE`, `API` or `TABLE` | `FILE` |
@@ -138,7 +138,7 @@ Update `sources.csv` and `datasets.csv` whenever a dataset is added, and `busine
 
 | Column | Derivation | Example |
 |--------|------------|---------|
-| `key_set` | `<source code>.<business concept code>`, the source being the dataset's (`datasets.source_id` → `sources.code`) | `npd.field` |
+| `key_set` | `<source code>.<business concept code>`, the source being the dataset's (`datasets.source_id` → `sources.code`) | `no_sodir.field` |
 | `key_set_binary` | source id as one byte, followed by business concept id as one byte (`BLOB`) | `0x0801` (source 8, concept 1) |
 
 Both identify the same thing: Library frames use `key_set` (readable) in development and `key_set_binary` (compact) in production (see *Library views*). Datasets of the same source share a key set for a given concept, which is what lets their rows meet on the hook. One byte per id caps source and business concept ids at 255. The table build fails, keeping the previous table and logging the error, on a duplicate `id`, an unknown dataset or business concept, or an id above 255. Use the `add-hook` project skill to add one.
@@ -216,7 +216,7 @@ Each Lake table can have a frame and a latest view, in development and/or produc
 |---|---|---|
 | Frame | `library.frame.<code>_dev` | `library.frame.<code>` |
 | Latest | `library.latest.<code>_dev` | `library.latest.<code>` |
-| Hook columns | `VARCHAR`: `key_set || '|' || <hook expression>` (`npd.field|17196400`) | `BLOB`: `key_set_binary || <hook expression as UTF-8 bytes>` (`0x0801` + `'17196400'`) |
+| Hook columns | `VARCHAR`: `key_set || '|' || <hook expression>` (`no_sodir.field|17196400`) | `BLOB`: `key_set_binary || <hook expression as UTF-8 bytes>` (`0x0801` + `'17196400'`) |
 
 **Frame** (SCD2, one version per Lake row):
 
@@ -271,9 +271,9 @@ The app talks to the server through `storage/duck.py`. It runs `CONNECT 'quack:<
 | Mode | Behaviour |
 |------|-----------|
 | `full` | Downloads the complete dataset into Raw, converts every Raw file that has no Std file yet (all of them with `--rebuild-std`), then rebuilds every Lake table of the dataset by replaying every Std file, which keeps the history of changes between downloads. A watermark row is appended after each step (`raw`, `std`, `lake`). |
-| `incremental` | First finishes a file left at `raw` or `std` by a failed run. Then downloads and compares against the latest watermark (NPD: the file's MD5 against the last stored file, so revisions of past months count); only when new data exists: stores the file, converts it to Std and loads its changes into the Lake, with a watermark row after each step. |
+| `incremental` | First finishes a file left at `raw` or `std` by a failed run. Then downloads and compares against the latest watermark (Sodir: the file's MD5 against the last stored file, so revisions of past months count); only when new data exists: stores the file, converts it to Std and loads its changes into the Lake, with a watermark row after each step. |
 
-The full load replays every Std file even when each file is a complete snapshot (e.g. NPD, whose latest file alone holds every row): the Lake's history of changes between downloads only exists by comparing consecutive files.
+The full load replays every Std file even when each file is a complete snapshot (e.g. Sodir, whose latest file alone holds every row): the Lake's history of changes between downloads only exists by comparing consecutive files.
 
 Select what to run with `--datasets <code>` (repeatable) and/or `--sources <source>` (every dataset of a source); without either, every registered dataset runs.
 
@@ -320,7 +320,7 @@ hydrocscraper/
 │
 ├── scrapers/
 │   ├── base.py             # BaseScraper: modes, fetch_to_temp, store_raw/store_table, watermarks
-│   └── npd/
+│   └── no_sodir/
 │       └── field_production_monthly.py   # one class per source and dataset
 ├── storage/
 │   ├── s3.py               # boto3 client for hydroc-raw

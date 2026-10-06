@@ -26,11 +26,11 @@ docker compose ps             # rustfs/postgres/duckdb healthy, rustfs-init exit
 ## Run the app
 
 ```bash
-docker compose run --rm app python main.py --mode full --sources npd
+docker compose run --rm app python main.py --mode full --sources no_sodir
 docker compose run --rm app python main.py --mode incremental
 ```
 
-`full` stores a new Raw file, rebuilds Std (`hydroc-std`) from every Raw file and rebuilds the Lake table (`lake.npd.field_production_monthly`); `incremental` converts and loads a new file's changes only. The app creates a missing raw view, std view or Lake table itself.
+`full` stores a new Raw file, rebuilds Std (`hydroc-std`) from every Raw file and rebuilds the Lake table (`lake.no_sodir.field_production_monthly`); `incremental` converts and loads a new file's changes only. The app creates a missing raw view, std view or Lake table itself.
 
 After editing `data/static/*.csv`, restart the server so it rebuilds `hook.metadata.*`:
 

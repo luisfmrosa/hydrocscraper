@@ -10,9 +10,9 @@ def test_timestamp_format():
 
 
 def test_raw_key_defaults_period_to_download_month():
-    key = raw_key("npd", "field_production_monthly", "field_production_monthly.csv", ts=TS)
+    key = raw_key("no_sodir", "field_production_monthly", "field_production_monthly.csv", ts=TS)
     assert key == (
-        "npd/field_production_monthly/year_month=2026-09/"
+        "no_sodir/field_production_monthly/year_month=2026-09/"
         "field_production_monthly_20260929_1005.csv"
     )
 
