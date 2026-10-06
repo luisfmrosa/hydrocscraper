@@ -52,7 +52,7 @@ The same stack can be deployed two ways (see *Infrastructure* below): on an Incu
 
 Every layer has its own bucket, `hydroc-<layer>`. Raw and Std are plain buckets of files; the other four are DuckLakes, each with its data in its own bucket and its catalog in its own Postgres database (`cat_hydroc_<layer>`) owned by its own user (`user_hydroc_<layer>`), all on the same Postgres instance. Separate catalogs and users leave room to segregate access per layer later.
 
-- **Library.** `frame` holds SCD2-like objects, each built on **one** Lake object (a table, a view or a materialized view; no joins), plus the Hook columns defined for it when it is created. `latest` holds views over the Frame objects that show only the current version of each row.
+- **Library** (*not defined yet*). `frame` holds SCD2-like objects, each built on **one** Lake object (a table, a view or a materialized view; no joins), plus the Hook columns defined for it when it is created. `latest` holds views over the Frame objects that show only the current version of each row. Hooks live here, not in the Lake: a Frame gets one column per hook of its dataset (`hook.metadata.hooks`), presumably named `HK_<business concept name in uppercase>` and holding, in development, `key_set || '|' || <hook expression>` (`VARCHAR`, e.g. `npd.field|17196400`) or, in production, `key_set_binary || <hook expression as UTF-8 bytes>` (`BLOB`). To be settled when the Library is designed.
 - **DWH.** The space for business views and models built on the Library. It starts with one schema, `supply`.
 
 ### Raw bucket layout
@@ -128,8 +128,20 @@ Update `sources.csv` and `datasets.csv` whenever a dataset is added, and `busine
 | | `periodicity` | Level of time detail | `monthly` |
 | | `keys` | Business key columns, comma-separated | `prfNpdidInformationCarrier, prfYear, prfMonth` |
 | | `url` | Dataset page | |
-| `business_concepts.csv` | `id`, `code`, `name`, `description` | Business concepts, defined manually | `1, Field, Field, Geographical area of provenance of a product` |
-| `hooks.csv` | `id`, `code`, `name`, `description` | Hooks, defined manually | `1, field, Field, Geographical area of provenance of a product` |
+| `business_concepts.csv` | `id`, `code`, `name`, `description` | Business concepts, defined manually | `1, field, Field, Geographical area of provenance of a product` |
+| `hooks.csv` | `id` | Surrogate key, incremented for each row | `1` |
+| | `business_concept_id` | → `business_concepts.id` | `1` |
+| | `dataset_id` | → `datasets.id` | `1` |
+| | `hook_expression` | SQL over the dataset's columns (as in its Lake table) giving the concept's business key | `prfNpdidInformationCarrier` |
+
+**Hooks.** A hook ties a business concept to a dataset, through a hook expression that gives the concept's business key in that dataset. `hooks.csv` holds only what is decided by hand (`id`, `business_concept_id`, `dataset_id`, `hook_expression`); `45_hook_static.sql` derives the hook identifiers when it builds `hook.metadata.hooks`, so they always follow the referenced rows:
+
+| Column | Derivation | Example |
+|--------|------------|---------|
+| `key_set` | `<source code>.<business concept code>`, the source being the dataset's (`datasets.source_id` → `sources.code`) | `npd.field` |
+| `key_set_binary` | source id as one byte, followed by business concept id as one byte (`BLOB`) | `0x0801` (source 8, concept 1) |
+
+Both identify the same thing: Library tables can use `key_set` (readable) during development and switch to `key_set_binary` (compact) later (see *Layers*). Datasets of the same source share a key set for a given concept, which is what lets their rows meet on the hook. One byte per id caps source and business concept ids at 255. The table build fails, keeping the previous table and logging the error, on a duplicate `id`, an unknown dataset or business concept, or an id above 255. Use the `add-hook` project skill to add one.
 
 `datasets` has one row per Std/Lake table. A non-tabular dataset also has a row of its own with empty `keys` (no table); its flattened tables point to it, or to their parent table, through `parent_code`. The app (`storage/datasets.py`) follows `parent_code` to find the tables a download feeds. The keys are written into each table's SQL scripts.
 
@@ -177,7 +189,7 @@ The Std table's typed columns (keys first; the same order and types as the Lake 
 
 ### Lake tables
 
-One schema per source, one append-only table per Std table. The data columns are the std view's, followed by:
+One schema per source, one append-only table per Std table. The Lake holds only the incremental changes, with no hook columns (hooks belong to the Library). The data columns are the std view's, followed by:
 
 | Column | Content |
 |--------|---------|

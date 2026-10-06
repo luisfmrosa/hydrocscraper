@@ -1,2 +1,2 @@
-id,code,name,description
-1,field,Field,Geographical area of provenance of a product
+id,business_concept_id,dataset_id,hook_expression
+1,1,1,prfNpdidInformationCarrier

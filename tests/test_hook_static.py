@@ -1,0 +1,70 @@
+"""sql/ddl/45_hook_static.sql on a local DuckDB: the static CSVs are copied to a
+temporary folder standing in for /opt/duckdb/static, and s3://hydroc-raw/ is
+pointed at another one."""
+
+import shutil
+from pathlib import Path
+
+import duckdb
+import pytest
+
+ROOT = Path(__file__).resolve().parents[1]
+SCRIPT = ROOT / "sql" / "ddl" / "45_hook_static.sql"
+NAMES = ("sources", "datasets", "business_concepts", "hooks")
+
+
+@pytest.fixture
+def static(tmp_path):
+    """Copy of data/static that a test may edit."""
+    folder = tmp_path / "static"
+    shutil.copytree(ROOT / "data" / "static", folder)
+    return folder
+
+
+def load(static, tmp_path):
+    bucket = tmp_path / "raw"
+    for name in NAMES:
+        (bucket / "metadata" / name).mkdir(parents=True, exist_ok=True)
+    sql = (
+        SCRIPT.read_text(encoding="utf-8")
+        .replace("/opt/duckdb/static/", static.as_posix() + "/")
+        .replace("s3://hydroc-raw/", bucket.as_posix() + "/")
+    )
+    con = duckdb.connect()
+    con.execute("ATTACH ':memory:' AS hook")
+    con.execute("CREATE SCHEMA hook.metadata")
+    con.execute(sql)
+    return con
+
+
+def test_hooks_derive_key_sets(static, tmp_path):
+    con = load(static, tmp_path)
+    rows = con.execute(
+        "SELECT id, business_concept_id, dataset_id, hook_expression, key_set, key_set_binary "
+        "FROM hook.metadata.hooks"
+    ).fetchall()
+    # dataset 1 is NPD (source 8), business concept 1 is field
+    assert rows == [(1, 1, 1, "prfNpdidInformationCarrier", "npd.field", b"\x08\x01")]
+
+
+HEADER = "id,business_concept_id,dataset_id,hook_expression\n"
+
+
+@pytest.mark.parametrize("hooks, error", [
+    ("1,1,1,x\n1,1,1,x\n", "duplicate id 1"),
+    ("1,1,99,x\n", "unknown dataset_id 99"),
+    ("1,99,1,x\n", "unknown business_concept_id 99"),
+    ("1,1,1,\n", "empty hook_expression"),
+])
+def test_invalid_hooks_fail(static, tmp_path, hooks, error):
+    (static / "hooks.csv").write_text(HEADER + hooks, encoding="utf-8")
+    with pytest.raises(duckdb.Error, match=error):
+        load(static, tmp_path)
+
+
+def test_ids_above_one_byte_fail(static, tmp_path):
+    with (static / "business_concepts.csv").open("a", encoding="utf-8") as fh:
+        fh.write("256,Big,Big,Too large for one byte\n")
+    (static / "hooks.csv").write_text(HEADER + "1,256,1,x\n", encoding="utf-8")
+    with pytest.raises(duckdb.Error, match="must fit in one byte"):
+        load(static, tmp_path)

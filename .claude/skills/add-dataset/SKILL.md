@@ -42,7 +42,7 @@ The watermark's `raw_file` is the file the raw view reads (the conversion in cas
 1. **Static metadata** (`data/static/`):
    - `sources.csv`: add the source if it's new (next `id`, `code`, `name`, `scope` Public/Private, `url`).
    - `datasets.csv`: the rows above. Columns: next `id`; `code`; `name`; `source_id`; `copyright`; `type` (`FILE`/`API`/`TABLE`); `format` (of the source); `parent_code`; `granularity`; `periodicity`; `keys` (comma-separated, quoted); `url`.
-   - `business_concepts.csv` / `hooks.csv` (`id`, `code`, `name`, `description`): only if the dataset introduces new ones; ask the user.
+   - Hooks: ask the user which business concepts the dataset carries, then follow the `add-hook` skill for each (it also adds missing business concepts).
 2. **Scraper** (Python collects only):
    - `scrapers/<source>/<dataset>.py`, with `scrapers/<source>/__init__.py` if the source is new. Follow `scrapers/npd/field_production_monthly.py`: set `source`/`dataset`, implement `download_full()` and `download_incremental()` (returns `True` when a file was stored), use `fetch_to_temp()`, `store_raw()` / `store_table()`, and end with `save_watermark(..., status="raw", raw_file=<key the raw view reads>)`.
    - **Snapshot sources** (every download is the whole dataset, like NPD): in `download_incremental()`, store the file only `if self.is_new_content(path)` (MD5 against the watermark's file), so revisions of past periods are caught. First check that two downloads of unchanged data are byte-identical; if the export embeds a generation time, ask the user.
