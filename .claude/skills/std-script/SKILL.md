@@ -19,10 +19,36 @@ Every dataset has exactly one Std script. It is dataset-specific: write the logi
   `s3://hydroc-std/<source>/<table>/year_month=<ym>/<source>_<table>_<ts>.parquet`,
   where `<table>` is `<dataset>` (tabular) or `<dataset>_<sub_table>`, and `<ym>`/`<ts>` come from `raw_file`. The shared timestamp links Std to Raw and to the watermark; never use the conversion time.
 - **Columns:** keys first, in the order of `keys`, then the others; final names and types (`col::TYPE AS col`). Use the narrowest correct type: `INTEGER` for years and months, `BIGINT` for ids, `DOUBLE` for measures, `DATE`/`TIMESTAMP` (parse with `strptime` if needed), `VARCHAR` otherwise. These names, order and types are the std view's and the Lake table's.
-- **Fail loudly:** use `::TYPE`, not `TRY_CAST`. A value that doesn't cast fails the step, the watermark stays at `raw` and the next run retries. Data-quality expectations (schema changes, value checks) go here too, as statements that raise an `error(...)`.
+- **Schema check first:** the raw view reads every file with `union_by_name`, so a column renamed or dropped in a new file silently becomes NULL there, and the Lake would record every row as changed. The script must start by comparing the Raw file's own columns with the expected list and fail on any difference (template below; copy it from the worked example).
+- **Fail loudly:** use `::TYPE`, not `TRY_CAST`. A schema change or a value that doesn't cast fails the step: the file gets no Std file, the watermark stays at `raw`, and the next run retries once the script is fixed. Other data-quality expectations (value checks) go here too, as statements that raise an `error(...)`.
+- **After changing the script:** files already converted are not redone by a normal full load (it only converts Raw files without a Std file). If the change alters the Std output, run `main.py --mode full --rebuild-std --datasets <code>`.
 - **Idempotent:** rerunning it overwrites the same files with the same content.
 
 `COPY … TO` takes a constant expression in parentheses, including `getvariable()`, but no subquery: build each path with `SET VARIABLE` first.
+
+## Schema check
+
+Read the file alone (`hive_partitioning = false`, or `year_month` shows up as a column) with the same reader as the raw view, and list every source column:
+
+```sql
+WITH actual AS (
+    SELECT column_name
+    FROM (DESCRIBE FROM read_csv(getvariable('raw_file'), all_varchar = true, hive_partitioning = false))
+),
+expected(column_name) AS (VALUES ('<col1>'), ('<col2>'), …),
+diff AS (
+    SELECT 'missing: ' || string_agg(column_name, ', ' ORDER BY column_name) AS msg
+    FROM (FROM expected EXCEPT FROM actual) HAVING count(*) > 0
+    UNION ALL
+    SELECT 'unexpected: ' || string_agg(column_name, ', ' ORDER BY column_name)
+    FROM (FROM actual EXCEPT FROM expected) HAVING count(*) > 0
+)
+SELECT error('Schema of ' || getvariable('raw_file') || ' changed: ' || string_agg(msg, '; '))
+FROM diff
+HAVING count(*) > 0;
+```
+
+For nested JSON, check the top-level keys the same way (and nested ones with `json_keys` if the structure matters).
 
 ## Tabular template
 
@@ -30,6 +56,7 @@ Every dataset has exactly one Std script. It is dataset-specific: write the logi
 -- Std: <source> <dataset> (tabular).
 -- Converts one Raw file (variable raw_file) to typed Parquet in Std, with the
 -- Raw file's year_month and timestamp. Keys: <keys>.
+-- <schema check>
 SET VARIABLE std_file =
     's3://hydroc-std/<source>/<dataset>/year_month='
     || regexp_extract(getvariable('raw_file'), 'year_month=([^/]+)/', 1)
@@ -73,5 +100,5 @@ COPY (
 
 ## Verify
 
-1. **Tests:** like `tests/test_lake.py`: write fixture Raw files to a temp folder, replace `s3://hydroc-raw/` and `s3://hydroc-std/` with local folders (create the Std folders first: a local `COPY` doesn't create them), `SET VARIABLE raw_file`, run the script, then check each Parquet file's path, types, row count and, if flattened, `parent` values.
-2. **Docker stack:** `docker compose run --rm app python main.py --mode full --datasets <code>`. The log shows the Std script once per Raw file. Then list `s3://hydroc-std/<source>/`: one file per Std table per Raw file, with the Raw timestamps.
+1. **Tests:** like `tests/test_lake.py` (including `test_std_fails_on_schema_change`): write fixture Raw files to a temp folder, replace `s3://hydroc-raw/` and `s3://hydroc-std/` with local folders (create the Std folders first: a local `COPY` doesn't create them), `SET VARIABLE raw_file`, run the script, then check each Parquet file's path, types, row count and, if flattened, `parent` values.
+2. **Docker stack:** `docker compose run --rm app python main.py --mode full --datasets <code>`. The log shows `n of m Raw files converted` (all of them on the first run, then only new ones; `--rebuild-std` converts all). Then list `s3://hydroc-std/<source>/`: one file per Std table per Raw file, with the Raw timestamps.

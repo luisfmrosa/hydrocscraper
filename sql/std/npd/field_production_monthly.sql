@@ -3,8 +3,34 @@
 -- s3:// path), to one typed Parquet file in Std with the Raw file's
 -- year_month and timestamp:
 --   s3://hydroc-std/npd/field_production_monthly/year_month=<ym>/npd_field_production_monthly_<ts>.parquet
--- Keys first, then the other columns; a value that doesn't cast fails the
--- step (data-quality checks go here). Rerunning overwrites the same file.
+-- Keys first, then the other columns. Rerunning overwrites the same file.
+--
+-- Checks (each fails the step; the watermark stays at 'raw' and the next run
+-- retries once the script is fixed):
+--   - schema: the file's columns must be exactly the expected ones. The raw
+--     view reads every file with union_by_name, so without this a renamed or
+--     dropped column would silently become NULL;
+--   - types: a value that doesn't cast.
+WITH actual AS (
+    SELECT column_name
+    FROM (DESCRIBE FROM read_csv(getvariable('raw_file'), all_varchar = true, hive_partitioning = false))
+),
+expected(column_name) AS (VALUES
+    ('prfInformationCarrier'), ('prfYear'), ('prfMonth'), ('prfPrdOilNetMillSm3'),
+    ('prfPrdGasNetBillSm3'), ('prfPrdNGLNetMillSm3'), ('prfPrdCondensateNetMillSm3'),
+    ('prfPrdOeNetMillSm3'), ('prfPrdProducedWaterInFieldMillSm3'), ('prfNpdidInformationCarrier')
+),
+diff AS (
+    SELECT 'missing: ' || string_agg(column_name, ', ' ORDER BY column_name) AS msg
+    FROM (FROM expected EXCEPT FROM actual) HAVING count(*) > 0
+    UNION ALL
+    SELECT 'unexpected: ' || string_agg(column_name, ', ' ORDER BY column_name)
+    FROM (FROM actual EXCEPT FROM expected) HAVING count(*) > 0
+)
+SELECT error('Schema of ' || getvariable('raw_file') || ' changed: ' || string_agg(msg, '; '))
+FROM diff
+HAVING count(*) > 0;
+
 SET VARIABLE std_file =
     's3://hydroc-std/npd/field_production_monthly/year_month='
     || regexp_extract(getvariable('raw_file'), 'year_month=([^/]+)/', 1)

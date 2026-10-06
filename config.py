@@ -11,6 +11,8 @@ load_dotenv(PROJECT_ROOT / ".env")
 
 # Raw layer — S3-compatible bucket (Incus storage bucket)
 RAW_BUCKET = "hydroc-raw"
+# Std layer — written only by the DuckDB server (SQL); the app never touches it
+STD_BUCKET = "hydroc-std"
 S3_ENDPOINT = os.getenv("HYDROC_S3_ENDPOINT", "")
 S3_RAW_KEY = os.getenv("HYDROC_S3_RAW_KEY", "")
 S3_RAW_SECRET = os.getenv("HYDROC_S3_RAW_SECRET", "")

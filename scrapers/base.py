@@ -15,8 +15,10 @@ One scraper class per source and dataset. Each concrete class must:
 Python only collects data. The base class then runs the static SQL steps on
 the DuckDB server (storage/std.py, storage/lake.py):
 
-  full:        download_full()        -> Std rebuilt from every Raw file
-                                      -> Lake full load of every table
+  full:        download_full()        -> Std for every Raw file without it
+                                         (every Raw file with rebuild_std)
+                                      -> Lake full load of every table (replays
+                                         every Std file: keeps the change history)
   incremental: download_incremental() -> Std from the watermark's Raw file
                                       -> Lake incremental load of every table
 
@@ -28,10 +30,12 @@ Helpers:
   - a shared httpx.Client
   - `fetch_to_temp()` — streamed, retried download into a temporary directory
   - `store_raw()` / `store_table()` — upload a file / a table (as Parquet) to Raw
+  - `is_new_content()` — whether a download differs from the watermark's file
   - watermark read/write helpers
   - standard logging
 """
 
+import hashlib
 import logging
 import tempfile
 from abc import ABC, abstractmethod
@@ -44,7 +48,7 @@ import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from storage import datasets, lake, std
+from storage import datasets, lake, s3, std
 from storage.raw import upload_raw
 from storage.watermark import DONE, read_watermark, write_watermark
 from utils.http import download_file as _download_file
@@ -87,9 +91,9 @@ class BaseScraper(ABC):
     # Modes
     # ------------------------------------------------------------------
 
-    def full_load(self) -> None:
+    def full_load(self, rebuild_std: bool = False) -> None:
         self.download_full()
-        std.standardize_all(self.source, self.dataset)
+        std.standardize_all(self.source, self.dataset, self.tables, rebuild=rebuild_std)
         self._advance("std")
         for table in self.tables:
             lake.load(self.source, table, "full")
@@ -159,6 +163,17 @@ class BaseScraper(ABC):
             pq.write_table(table, path)
             return self.store_raw(path, period=period, ts=ts)
 
+    def is_new_content(self, path: Path) -> bool:
+        """True unless *path* has the same bytes as the watermark's Raw file.
+
+        For sources that republish a whole snapshot: revisions of past periods
+        change the file without changing its latest period.
+        """
+        key = self.watermark.get("raw_file")
+        if not key:
+            return True
+        return _md5(path.read_bytes()) != _md5(s3.get_bytes(key))
+
     @property
     def watermark(self) -> dict:
         return read_watermark(self.source, self.dataset)
@@ -168,3 +183,7 @@ class BaseScraper(ABC):
 
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__} code={self.code!r}>"
+
+
+def _md5(data: bytes) -> str:
+    return hashlib.md5(data).hexdigest()

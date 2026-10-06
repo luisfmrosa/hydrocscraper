@@ -54,7 +54,7 @@ hydroc-raw/
 ```
 
 - `year_month` defaults to the UTC month of the download. A scraper may pass the reference period instead, for sources that publish one file per period.
-- Every download gets its own timestamped file, so nothing is overwritten.
+- Every download gets its own timestamped file, so nothing is overwritten. The timestamp is to the minute: two downloads of a dataset in the same minute share a key and the second replaces the first, which is accepted (it doesn't happen in practice).
 
 ### Std bucket layout
 
@@ -65,7 +65,9 @@ hydroc-std/
 ```
 
 - `<table>` is the dataset, or `<dataset>_<sub_table>` for a flattened table of a non-tabular dataset.
-- One file per Std table per Raw file, with the Raw file's `year_month` and timestamp. Std is derived from Raw and can always be rebuilt from it; a full load does so.
+- One file per Std table per Raw file, with the Raw file's `year_month` and timestamp. Std is derived from Raw and can always be rebuilt from it: a full load converts the Raw files that have no Std file yet, and `--rebuild-std` converts them all again.
+
+**Schema changes.** The Std script first checks the Raw file's columns against the expected list and fails on any missing or unexpected column (the raw view reads files with `union_by_name`, so a renamed column would otherwise silently become NULL). The failed file stays at status `raw` and has no Std file. Fix the raw view and Std script, then rerun: an incremental run retries the pending file, and a full run converts every file without a Std file. If the fix changes the Std output (types, columns), run `--mode full --rebuild-std`.
 
 ### Watermarks
 
@@ -186,8 +188,8 @@ The app talks to the server through `storage/duck.py`. It runs `CONNECT 'quack:<
 
 | Mode | Behaviour |
 |------|-----------|
-| `full` | Downloads the complete dataset into Raw, rebuilds Std from every Raw file, then rebuilds every Lake table of the dataset from every Std file. A watermark row is appended after each step (`raw`, `std`, `lake`). |
-| `incremental` | First finishes a file left at `raw` or `std` by a failed run. Then downloads and compares against the latest watermark; only when new data exists: stores the file, converts it to Std and loads its changes into the Lake, with a watermark row after each step. |
+| `full` | Downloads the complete dataset into Raw, converts every Raw file that has no Std file yet (all of them with `--rebuild-std`), then rebuilds every Lake table of the dataset by replaying every Std file, which keeps the history of changes between downloads. A watermark row is appended after each step (`raw`, `std`, `lake`). |
+| `incremental` | First finishes a file left at `raw` or `std` by a failed run. Then downloads and compares against the latest watermark (NPD: the file's MD5 against the last stored file, so revisions of past months count); only when new data exists: stores the file, converts it to Std and loads its changes into the Lake, with a watermark row after each step. |
 
 Select what to run with `--datasets <code>` (repeatable) and/or `--sources <source>` (every dataset of a source); without either, every registered dataset runs.
 

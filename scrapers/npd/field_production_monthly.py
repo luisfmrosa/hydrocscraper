@@ -11,7 +11,9 @@ Licence: NLOD (Norwegian Licence for Open Government Data)
 NPD publishes a single CSV containing the complete production history for all
 fields. There is no incremental API endpoint, so both full and incremental
 modes download the same file. Incremental mode only stores the file in the
-Raw bucket if its latest period differs from the watermark.
+Raw bucket if its content differs from the watermark's file: a new period,
+or a revision of past ones (the export is byte-identical when nothing
+changed).
 
 CSV columns (English locale):
   prfInformationCarrier  — field name
@@ -73,21 +75,21 @@ class NpdFieldProductionMonthly(BaseScraper):
     def download_incremental(self) -> bool:
         last_period = self.watermark.get("last_period_fetched")
 
-        # NPD always publishes the full dataset; the watermark tells us
-        # whether new data has actually been added.
+        # NPD always publishes the full dataset; compare it with the last
+        # stored file to see whether anything changed.
         self.logger.info("Incremental load: downloading NPD field production CSV.")
         with self.fetch_to_temp(_CSV_URL, self.filename) as path:
             latest_period = _latest_period_in_file(path)
-            if latest_period == last_period:
+            if not self.is_new_content(path):
                 self.logger.info(
-                    "No new data (latest period still %s). Nothing stored.",
+                    "No new data (file unchanged, latest period %s). Nothing stored.",
                     latest_period,
                 )
                 return False
             key = self.store_raw(path)
 
         self.logger.info(
-            "New data detected: %s -> %s", last_period or "never", latest_period
+            "New data detected (latest period %s -> %s)", last_period or "never", latest_period
         )
         self.save_watermark(
             load_mode="incremental",

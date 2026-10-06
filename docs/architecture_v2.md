@@ -103,7 +103,7 @@ Keeping every source in Raw means Std can always be rebuilt from Raw.
 
 This layer is an S3 bucket, `hydroc-std`, holding every Raw file converted to typed Parquet. It is derived data: it can be rebuilt from Raw at any time, and a full load does so. All transformations from here on (Raw → Std → Lake) are static SQL scripts run on the DuckDB server.
 
-* **Std script**, `sql/std/<source>/<dataset>.sql`: dataset-specific; reads **one** Raw file through the raw view (the file is passed as the variable `raw_file`), casts types, flattens when needed and writes one Parquet file per Std table with `COPY … TO`. A value that doesn't cast fails the step: data-quality expectations (schema changes, column values) are added here.
+* **Std script**, `sql/std/<source>/<dataset>.sql`: dataset-specific; reads **one** Raw file through the raw view (the file is passed as the variable `raw_file`), checks its columns against the expected list, casts types, flattens when needed and writes one Parquet file per Std table with `COPY … TO`. A schema change or a value that doesn't cast fails the step: data-quality expectations (column values) are added here too.
 * **Std view**, `hook.std_views.<code>`: one per Std table, over its Parquet files, with the `___Std_*` metadata columns (MD5 of the non-key columns, file name, `year_month`, file timestamp). The Lake loads read these views.
 
 Std files keep the `year_month` and timestamp of the Raw file they come from. This links them to their Raw file and the watermark, and the timestamp becomes `___Lake_load_timestamp`.
@@ -350,5 +350,5 @@ This must be converted to a table in hook layer, metadata schema.
 
 Watermarks are kept per downloaded dataset, and `raw_file` is the key of the Raw file the Std script reads (the Parquet conversion in case 2). Std/Lake tables have no watermark of their own: their incremental load reads the Std file that shares the `year_month` and timestamp suffix of the watermark's Raw file.
 
-Each step of a load appends a row with its `status`: `raw` (stored in Raw), `std` (converted to Std), `lake` (loaded into the Lake). An incremental run first finishes a file left at `raw` or `std`, so a failed step is retried on the next run. A full run rebuilds Std from every Raw file, then reloads the Lake.
+Each step of a load appends a row with its `status`: `raw` (stored in Raw), `std` (converted to Std), `lake` (loaded into the Lake). An incremental run first finishes a file left at `raw` or `std`, so a failed step is retried on the next run. A full run converts every Raw file that has no Std file yet (every Raw file with `--rebuild-std`, e.g. after a Std script change), then reloads the Lake by replaying every Std file. Even when each file is a complete snapshot (e.g. NPD), the replay is kept: the Lake's history of changes between downloads only exists by comparing consecutive files.
 

@@ -45,6 +45,7 @@ The watermark's `raw_file` is the file the raw view reads (the conversion in cas
    - `business_concepts.csv` / `hooks.csv` (`id`, `code`, `name`, `description`): only if the dataset introduces new ones; ask the user.
 2. **Scraper** (Python collects only):
    - `scrapers/<source>/<dataset>.py`, with `scrapers/<source>/__init__.py` if the source is new. Follow `scrapers/npd/field_production_monthly.py`: set `source`/`dataset`, implement `download_full()` and `download_incremental()` (returns `True` when a file was stored), use `fetch_to_temp()`, `store_raw()` / `store_table()`, and end with `save_watermark(..., status="raw", raw_file=<key the raw view reads>)`.
+   - **Snapshot sources** (every download is the whole dataset, like NPD): in `download_incremental()`, store the file only `if self.is_new_content(path)` (MD5 against the watermark's file), so revisions of past periods are caught. First check that two downloads of unchanged data are byte-identical; if the export embeds a generation time, ask the user.
    - Case 2: capture one `ts = storage.raw.utc_now()` and pass it to both `store_raw(path, ts=ts)` and `store_table(table, name, ts=ts)`. Keep the conversion in a pure function so it can be unit-tested.
    - Register it in `config.SCRAPER_REGISTRY` under the dataset code, with its `source` and dotted `class` path. Sub-tables are not registered: the base class finds them in `datasets.csv` through `parent_code`.
 3. **Raw view:** follow the `raw-view` skill.
@@ -58,7 +59,8 @@ The watermark's `raw_file` is the file the raw view reads (the conversion in cas
     1. `docker compose restart duckdb`, then check the logs;
     2. `docker compose run --rm app python main.py --mode full --datasets <code>`;
     3. `docker compose run --rm app python main.py --mode incremental --datasets <code>`;
-    4. the checks listed in each skill; the latest watermark rows must read `lake`, `std`, `raw`.
+    4. `--mode full` again: the log must show `1 of n Raw files converted` (only the new file);
+    5. the checks listed in each skill; the latest watermark rows must read `lake`, `std`, `raw`.
 11. **Docs:** add the dataset to `README.md` (data sources table) and to `docs/data_sources.md` if needed.
 
 ## Done when

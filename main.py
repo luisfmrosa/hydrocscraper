@@ -6,6 +6,7 @@ Usage:
     python main.py --mode full
     python main.py --mode full --sources npd
     python main.py --mode incremental --datasets npd_field_production_monthly
+    python main.py --mode full --rebuild-std     # after changing a Std script
 
 DuckLake objects are created by the DuckDB server at startup (sql/ddl/);
 Lake tables are created by the app on first load.
@@ -86,10 +87,27 @@ def _load_scraper(code: str, client):
         f"Available: {', '.join(sorted({e['source'] for e in SCRAPER_REGISTRY.values()}))}"
     ),
 )
+@click.option(
+    "--rebuild-std",
+    is_flag=True,
+    default=False,
+    help=(
+        "Full mode only: convert every Raw file to Std again, not only those "
+        "without a Std file. Use after changing a Std script."
+    ),
+)
 @click.option("--verbose", "-v", is_flag=True, default=False, help="Debug logging.")
-def main(mode: str, datasets: tuple[str, ...], sources: tuple[str, ...], verbose: bool) -> None:
+def main(
+    mode: str,
+    datasets: tuple[str, ...],
+    sources: tuple[str, ...],
+    rebuild_std: bool,
+    verbose: bool,
+) -> None:
     _setup_logging(verbose)
     logger = logging.getLogger("hydrocscraper.main")
+    if rebuild_std and mode != "full":
+        raise click.BadParameter("--rebuild-std requires --mode full", param_hint="--rebuild-std")
 
     targets = _select(datasets, sources)
     logger.info("Mode: %s  |  Datasets: %s", mode, ", ".join(targets))
@@ -102,7 +120,7 @@ def main(mode: str, datasets: tuple[str, ...], sources: tuple[str, ...], verbose
                 logger.info("--- %s ---", scraper)
 
                 if mode == "full":
-                    scraper.full_load()
+                    scraper.full_load(rebuild_std=rebuild_std)
                 elif mode == "incremental":
                     scraper.incremental_load()
 

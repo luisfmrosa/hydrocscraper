@@ -151,6 +151,18 @@ def test_std_writes_one_typed_file_per_raw_file(con):
     assert types["prfPrdOilNetMillSm3"] == "DOUBLE"
 
 
+def test_std_fails_on_schema_change(con, raw):
+    # NPD renames a column: without the check it would silently become NULL
+    key = PREFIX + "year_month=2026-04/field_production_monthly_20260401_1000.csv"
+    path = raw / key
+    path.parent.mkdir(parents=True, exist_ok=True)
+    header = HEADER.replace("prfPrdOilNetMillSm3", "prfPrdOilNetMillSm3_v2") + ",prfNewColumn"
+    path.write_text(header + "\nEKOFISK,2025,1,1.0,0.5,0,0,1.5,0.1,43506,x\n", encoding="utf-8")
+    (Path(con.std_bucket) / std_key(key)).parent.mkdir(parents=True, exist_ok=True)
+    with pytest.raises(duckdb.Error, match="missing: prfPrdOilNetMillSm3; unexpected: prfNewColumn, prfPrdOilNetMillSm3_v2"):
+        run(con, std.std_scripts("npd", "field_production_monthly")[1], {"raw_file": con.bucket + key})
+
+
 def test_std_view_metadata_columns(con):
     row = con.execute(
         "SELECT ___Std_filename, ___Std_year_month, ___Std_file_timestamp "
