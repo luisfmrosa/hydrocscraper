@@ -2,6 +2,13 @@
 
 A modular pipeline that collects official hydrocarbon production data from national and international sources, stores raw downloads, and transforms them into a unified analytical dataset.
 
+This is also a playground to test some cool stuff:
+
+* DuckDB!
+* Hook methodology
+* AI-harnessed development
+* Infrastructure and configuration as code with OpenTofu and Ansible
+
 ## Overview
 
 ```
@@ -124,3 +131,19 @@ One scraper class per source and dataset:
    - per Std table: std view `sql/ddl/std_views/<nnn>_<code>.sql`, Lake table `sql/ddl/lake/<code>.sql`, Lake loads `sql/lake/<source>/<table>_full.sql` and `_incremental.sql`;
    - `.read` lines for the views and Lake tables in `sql/ddl/init_server.sql`.
 5. Restart the DuckDB server so it reloads the static metadata.
+
+## Roadmap
+
+The idea is to keep expanding it. Here are some ideas:
+
+* rework the pipeline to use dbt or Starflow
+* orchestrate with Airflow
+* use the project [changedetection.io](https://changedetection.io) locally to detect when a source changes and trigger the corresponding pipeline
+* implement all known datasets
+* create a unified analytical layer for oil supply (star schema?)
+* add a analytical serving layer (Metabase)[https://www.metabase.com/]?
+* reorganize the project to allow parallel agentic development
+
+... and it's already a lot of things!
+
+Feel free to contact and share your ideas.
