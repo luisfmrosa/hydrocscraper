@@ -12,7 +12,9 @@
 -- columns (___Lake_md5, ___Lake_datasource, ___Lake_sourcefile), then
 --   ___Effective_From  when this version was observed (___Lake_load_timestamp)
 --   ___Effective_To    when the next version of the key was observed;
---                      9999-12-31 for the key's last version
+--                      'infinity' for the key's last version (no time zone,
+--                      so the same in every session: query open versions
+--                      with ___Effective_To = 'infinity'::TIMESTAMPTZ)
 --   ___Is_Deleted      true: the key disappeared at ___Effective_From
 --
 -- CREATE OR REPLACE: the definition must follow the repository. Fails at
@@ -35,7 +37,7 @@ SELECT
     ___Lake_datasource,
     ___Lake_sourcefile,
     ___Lake_load_timestamp                                          AS ___Effective_From,
-    lead(___Lake_load_timestamp, 1, TIMESTAMPTZ '9999-12-31') OVER (
+    lead(___Lake_load_timestamp, 1, 'infinity'::TIMESTAMPTZ) OVER (
         PARTITION BY prfNpdidInformationCarrier, prfYear, prfMonth
         ORDER BY ___Lake_load_timestamp
     )                                                               AS ___Effective_To,
@@ -45,5 +47,5 @@ FROM lake.no_sodir.field_production_monthly;
 CREATE OR REPLACE VIEW library.latest.no_sodir_field_production_monthly_dev AS
 SELECT * EXCLUDE (___Effective_From, ___Effective_To, ___Is_Deleted)
 FROM library.frame.no_sodir_field_production_monthly_dev
-WHERE ___Effective_To = TIMESTAMPTZ '9999-12-31'
+WHERE ___Effective_To = 'infinity'::TIMESTAMPTZ
   AND NOT ___Is_Deleted;

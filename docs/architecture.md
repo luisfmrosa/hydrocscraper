@@ -226,10 +226,12 @@ Each Lake table can have a frame and a latest view, in development and/or produc
 | data columns | The Lake table's |
 | `___Lake_md5`, `___Lake_datasource`, `___Lake_sourcefile` | Lineage of the version |
 | `___Effective_From` | When the version was observed: `___Lake_load_timestamp` |
-| `___Effective_To` | `lead(___Lake_load_timestamp, 1, TIMESTAMPTZ '9999-12-31') OVER (PARTITION BY <keys> ORDER BY ___Lake_load_timestamp)`: when the key's next version was observed, open (`9999-12-31`) for its last one |
+| `___Effective_To` | `lead(___Lake_load_timestamp, 1, 'infinity'::TIMESTAMPTZ) OVER (PARTITION BY <keys> ORDER BY ___Lake_load_timestamp)`: when the key's next version was observed, open (`infinity`) for its last one |
 | `___Is_Deleted` | `___Lake_isdeleted`: the key disappeared at `___Effective_From` |
 
-**Latest:** the frame without the three SCD2 columns, where `___Effective_To = TIMESTAMPTZ '9999-12-31' AND NOT ___Is_Deleted`, i.e. the current version of every key that still exists.
+**Latest:** the frame without the three SCD2 columns, where `___Effective_To = 'infinity'::TIMESTAMPTZ AND NOT ___Is_Deleted`, i.e. the current version of every key that still exists.
+
+**Open end: `infinity`, not `9999-12-31`.** A `TIMESTAMPTZ` literal without an offset is read in the session's time zone, so `TIMESTAMPTZ '9999-12-31'` is a different moment on the server (UTC) and on a client in another zone, and a client's `WHERE ___Effective_To = TIMESTAMPTZ '9999-12-31'` would match nothing. `infinity` has no time zone: query open versions with `___Effective_To = 'infinity'::TIMESTAMPTZ` or `NOT isfinite(___Effective_To)`. Outside SQL it renders oddly (Python `datetime(9999, 12, 31, 23, 59, 59, 999999)` without a zone, pandas `294247-01-10 …`).
 
 The views read the Lake across catalogs (`lake.<source>.<table>` from the `library` DuckLake), which works because every catalog is attached under a fixed alias. A view fails at server start while its Lake table doesn't exist; `storage/lake.py` re-runs the table's Library scripts after every Lake load.
 

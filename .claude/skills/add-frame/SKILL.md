@@ -53,13 +53,17 @@ One file holds both views: `sql/ddl/library/<code>[_dev].sql`. Copy the worked e
 4. **SCD2 columns:**
    ```sql
    ___Lake_load_timestamp                                          AS ___Effective_From,
-   lead(___Lake_load_timestamp, 1, TIMESTAMPTZ '9999-12-31') OVER (
+   lead(___Lake_load_timestamp, 1, 'infinity'::TIMESTAMPTZ) OVER (
        PARTITION BY <keys>
        ORDER BY ___Lake_load_timestamp
    )                                                               AS ___Effective_To,
    ___Lake_isdeleted                                               AS ___Is_Deleted
    ```
-   `___Effective_From` is when the version was observed (the Raw file's download time); the default is `TIMESTAMPTZ`, the same type. List every key column in `PARTITION BY` (`parent` included for a flattened table).
+   `___Effective_From` is when the version was observed (the Raw file's download time). The key's last version is open: `___Effective_To` is `'infinity'::TIMESTAMPTZ`, the same type as the `LEAD` values.
+
+   **Never use a `9999-12-31` literal for the open end.** A `TIMESTAMPTZ` literal without an offset is read in the session's time zone: the server (UTC) and a client in another zone would build different moments, and a query like `WHERE ___Effective_To = TIMESTAMPTZ '9999-12-31'` from that client would silently match nothing. `infinity` has no time zone. Query open versions with `___Effective_To = 'infinity'::TIMESTAMPTZ` or `NOT isfinite(___Effective_To)`. Outside SQL it shows oddly: Python `fetchall()` gives `datetime(9999, 12, 31, 23, 59, 59, 999999)` without a time zone, pandas gives `294247-01-10 04:00:54+00:00`.
+
+   List every key column in `PARTITION BY` (`parent` included for a flattened table).
 
 **Latest**, current versions only:
 
@@ -67,7 +71,7 @@ One file holds both views: `sql/ddl/library/<code>[_dev].sql`. Copy the worked e
 CREATE OR REPLACE VIEW library.latest.<code>[_dev] AS
 SELECT * EXCLUDE (___Effective_From, ___Effective_To, ___Is_Deleted)
 FROM library.frame.<code>[_dev]
-WHERE ___Effective_To = TIMESTAMPTZ '9999-12-31'
+WHERE ___Effective_To = 'infinity'::TIMESTAMPTZ
   AND NOT ___Is_Deleted;
 ```
 
@@ -81,7 +85,7 @@ Add `.read library/<code>[_dev].sql` to `sql/ddl/init_server.sql`, under `-- Lib
 
 ## 5. Verify
 
-1. **Tests:** like `tests/test_library.py` (it reuses the Lake fixtures of `tests/test_lake.py`): versions and effective ranges, a key deleted and back, a key deleted last, one open version per key, hook values, `latest` columns and rows. Run `pytest` in the app container (`docker compose run --rm --no-deps app sh -c "pip install -q pytest && python -m pytest -q"`).
+1. **Tests:** like `tests/test_library.py` (it reuses the Lake fixtures of `tests/test_lake.py`): versions and effective ranges, a key deleted and back, a key deleted last, one open version per key, hook values, `latest` columns and rows, and the same results under a non-UTC session time zone. Run `pytest` in the app container (`docker compose run --rm --no-deps app sh -c "pip install -q pytest && python -m pytest -q"`).
 2. **Docker stack** (`architecture/docker`): `docker compose restart duckdb` (no error in `docker compose logs duckdb` once the Lake table exists), then `docker compose run --rm app python main.py --mode full --datasets <dataset code>` (the log shows the library script after the load). Then:
    ```sql
    -- one frame row per Lake row
@@ -92,7 +96,7 @@ Add `.read library/<code>[_dev].sql` to `sql/ddl/init_server.sql`, under `-- Lib
                                  QUALIFY row_number() OVER (PARTITION BY <keys> ORDER BY ___Lake_load_timestamp DESC) = 1)
            WHERE NOT ___Lake_isdeleted);
    -- exactly one open version per key: must return 0
-   SELECT count(*) FROM (SELECT 1 FROM library.frame.<code>[_dev] WHERE ___Effective_To = TIMESTAMPTZ '9999-12-31'
+   SELECT count(*) FROM (SELECT 1 FROM library.frame.<code>[_dev] WHERE ___Effective_To = 'infinity'::TIMESTAMPTZ
                          GROUP BY <keys> HAVING count(*) <> 1);
    -- no NULL hook: must return 0
    SELECT count(*) FROM library.frame.<code>[_dev] WHERE HK_<NAME> IS NULL;

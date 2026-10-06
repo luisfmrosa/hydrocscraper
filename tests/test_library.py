@@ -16,7 +16,7 @@ from test_lake import DDL, con, load, raw, run  # noqa: F401  (fixtures)
 FRAME = "library.frame.no_sodir_field_production_monthly_dev"
 LATEST = "library.latest.no_sodir_field_production_monthly_dev"
 JAN, FEB, MAR = (datetime(2026, m, 1, 10, 0, tzinfo=timezone.utc) for m in (1, 2, 3))
-OPEN = datetime(9999, 12, 31, tzinfo=timezone.utc)
+OPEN = None  # versions() reports an open ___Effective_To ('infinity') as None
 
 
 @pytest.fixture
@@ -31,7 +31,9 @@ def lib(con):  # noqa: F811
 
 def versions(con, field):
     return con.execute(
-        f"SELECT prfPrdOilNetMillSm3, ___Effective_From, ___Effective_To, ___Is_Deleted FROM {FRAME} "
+        "SELECT prfPrdOilNetMillSm3, ___Effective_From, "
+        "CASE WHEN isfinite(___Effective_To) THEN ___Effective_To END, ___Is_Deleted "
+        f"FROM {FRAME} "
         "WHERE prfInformationCarrier = ? ORDER BY ___Effective_From",
         [field],
     ).fetchall()
@@ -55,7 +57,7 @@ def test_frame_has_one_version_per_lake_row(lib):
 def test_one_open_version_per_key(lib):
     assert lib.execute(
         f"SELECT count(*) FROM (SELECT prfNpdidInformationCarrier, prfYear, prfMonth FROM {FRAME} "
-        f"WHERE ___Effective_To = TIMESTAMPTZ '9999-12-31' GROUP BY ALL HAVING count(*) <> 1)"
+        f"WHERE ___Effective_To = 'infinity'::TIMESTAMPTZ GROUP BY ALL HAVING count(*) <> 1)"
     ).fetchone()[0] == 0
 
 
@@ -93,3 +95,18 @@ def test_latest_excludes_a_key_deleted_last(lib):
     assert versions(lib, "OSEBERG") == [(4.0, FEB, apr, False), (4.0, apr, OPEN, True)]
     names = [r[0] for r in lib.execute(f"SELECT prfInformationCarrier FROM {LATEST}").fetchall()]
     assert "OSEBERG" not in names
+
+
+@pytest.mark.parametrize("zone", ["Europe/Oslo", "America/Sao_Paulo"])
+def test_open_end_does_not_depend_on_the_session_time_zone(lib, zone):
+    def snapshot():
+        open_versions = lib.execute(
+            f"SELECT count(*) FROM {FRAME} WHERE ___Effective_To = 'infinity'::TIMESTAMPTZ"
+        ).fetchone()[0]
+        latest = lib.execute(f"SELECT * FROM {LATEST} ORDER BY ALL").fetchall()
+        return open_versions, latest
+
+    utc = snapshot()
+    lib.execute(f"SET TimeZone = '{zone}'")
+    assert snapshot() == utc
+    assert utc[0] == 4     # one open version per key
