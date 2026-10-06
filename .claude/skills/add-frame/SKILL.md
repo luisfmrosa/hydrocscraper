@@ -21,15 +21,27 @@ A frame is a view over **one** Lake table (no joins). Each Lake row (new, change
 | Frame view | `library.frame.<code>_dev` | `library.frame.<code>` |
 | Latest view | `library.latest.<code>_dev` | `library.latest.<code>` |
 | Script | `sql/ddl/library/<code>_dev.sql` | `sql/ddl/library/<code>.sql` |
-| Hook column | `VARCHAR`: `'<key_set>' \|\| '\|' \|\| (<hook expression>)::VARCHAR` | `BLOB`: `'<key_set_binary as \x escapes>'::BLOB \|\| encode((<hook expression>)::VARCHAR)` |
-| Sodir example | `no_sodir.field\|17196400` | `'\x08\x01'::BLOB \|\| encode(...)` → `0x0801` + bytes of `'17196400'` |
+| Hook expression | `hook_expression_dev` | `hook_expression_prod`, encoded per `hook_encoding` |
+| Hook column | `VARCHAR`: `'<key_set>' \|\| '\|' \|\| (<hook_expression_dev>)::VARCHAR` | `BLOB`: `'<key_set_binary as \x escapes>'::BLOB \|\| <encoded value>` (below) |
+| Sodir example | `no_sodir.field\|EKOFISK` | `integer`: `0x0801` + `0x0000A9F2` (EKOFISK, 43506) |
+
+Production encoded value, as unsigned big-endian integers so the hex reads like the number (a negative or too large value fails the cast, so the view fails instead of building a wrong hook):
+
+| `hook_encoding` | Encoded value | Hook bytes |
+|---|---|---|
+| `integer` | `unhex(printf('%08x', (<hook_expression_prod>)::UINTEGER))` | 2 + 4 |
+| `bigint` | `unhex(printf('%016x', (<hook_expression_prod>)::UBIGINT))` | 2 + 8 |
+| `varchar` | `encode((<hook_expression_prod>)::VARCHAR)` | 2 + length |
+
+Development and production hooks may use different keys (Sodir: field name vs NPDID), so they don't always group rows the same way (a renamed field gets a new development hook).
 
 Both modes can exist side by side (different names and files).
 
 ## 2. Get the hooks
 
 ```sql
-SELECT h.id, bc.name, h.hook_expression, h.key_set, hex(h.key_set_binary)
+SELECT h.id, bc.name, h.hook_expression_dev, h.hook_expression_prod, h.hook_encoding,
+       h.key_set, hex(h.key_set_binary)
 FROM hook.metadata.hooks h
 JOIN hook.metadata.business_concepts bc ON bc.id = h.business_concept_id
 JOIN hook.metadata.datasets d ON d.id = h.dataset_id
@@ -37,7 +49,7 @@ WHERE d.code = '<code>'
 ORDER BY h.id
 ```
 
-(or read `data/static/hooks.csv` and `business_concepts.csv`). Show them and ask the user to confirm each hook expression. If they change one, update `hooks.csv` first (`add-hook` skill), so the file stays the single definition. If the dataset has no hook, say so and offer the `add-hook` skill; continue without hook columns only if the user agrees.
+(or read `data/static/hooks.csv` and `business_concepts.csv`). Show them and ask the user to confirm, for each hook, the expression of the chosen mode (and the encoding in production). If they change one, update `hooks.csv` first (`add-hook` skill), so the file stays the single definition. If the dataset has no hook, say so and offer the `add-hook` skill; continue without hook columns only if the user agrees.
 
 Write the key sets into the view as literals (static SQL). Production: `key_set_binary` `0801` → `'\x08\x01'::BLOB`.
 
@@ -47,7 +59,7 @@ One file holds both views: `sql/ddl/library/<code>[_dev].sql`. Copy the worked e
 
 **Frame**, `CREATE OR REPLACE VIEW library.frame.<code>[_dev] AS SELECT … FROM lake.<source>.<table>`, columns in this order:
 
-1. **Hooks,** one per hook in hook `id` order, named `HK_` + the business concept's `name` in uppercase, any character other than a letter or digit replaced by `_` (`Field` → `HK_FIELD`). Value per the mode table. Keep the parentheses around the hook expression.
+1. **Hooks,** one per hook in hook `id` order, named `HK_` + the business concept's `name` in uppercase, any character other than a letter or digit replaced by `_` (`Field` → `HK_FIELD`). Value per the mode table. Use the mode's expression (`hook_expression_dev` or `hook_expression_prod`) and keep the parentheses around it.
 2. **Data columns:** every data column of the Lake table, same names and order.
 3. **Lineage:** `___Lake_md5`, `___Lake_datasource`, `___Lake_sourcefile`.
 4. **SCD2 columns:**
@@ -101,7 +113,7 @@ Add `.read library/<code>[_dev].sql` to `sql/ddl/init_server.sql`, under `-- Lib
    -- no NULL hook: must return 0
    SELECT count(*) FROM library.frame.<code>[_dev] WHERE HK_<NAME> IS NULL;
    ```
-   Production: also check `hex(HK_<NAME>)` starts with the hook's `hex(key_set_binary)`.
+   Production: also check `hex(HK_<NAME>)` starts with the hook's `hex(key_set_binary)` and every hook has the encoding's length (`octet_length(HK_<NAME>)` = 6 for `integer`, 10 for `bigint`).
 
 ## Changing a frame
 

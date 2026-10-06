@@ -132,16 +132,22 @@ Update `sources.csv` and `datasets.csv` whenever a dataset is added, and `busine
 | `hooks.csv` | `id` | Surrogate key, incremented for each row | `1` |
 | | `business_concept_id` | → `business_concepts.id` | `1` |
 | | `dataset_id` | → `datasets.id` | `1` |
-| | `hook_expression` | SQL over the dataset's columns (as in its Lake table) giving the concept's business key | `prfNpdidInformationCarrier` |
+| | `hook_expression_dev` | SQL over the dataset's columns (as in its Lake table) giving the concept's business key in development, used as text: usually a readable one | `prfInformationCarrier` |
+| | `hook_expression_prod` | The same in production: usually the source's id | `prfNpdidInformationCarrier` |
+| | `hook_encoding` | How the production value is encoded: `integer` (4 bytes), `bigint` (8 bytes, the default when empty) or `varchar` (UTF-8). Integers are unsigned and big-endian | `integer` |
 
-**Hooks.** A hook ties a business concept to a dataset, through a hook expression that gives the concept's business key in that dataset. `hooks.csv` holds only what is decided by hand (`id`, `business_concept_id`, `dataset_id`, `hook_expression`); `45_hook_static.sql` derives the hook identifiers when it builds `hook.metadata.hooks`, so they always follow the referenced rows:
+**Hooks.** A hook ties a business concept to a dataset, through hook expressions that give the concept's business key in that dataset, one per mode of the Library views. `hooks.csv` holds only what is decided by hand (`id`, `business_concept_id`, `dataset_id`, the two expressions, `hook_encoding`); `45_hook_static.sql` derives the hook identifiers when it builds `hook.metadata.hooks`, so they always follow the referenced rows:
 
 | Column | Derivation | Example |
 |--------|------------|---------|
 | `key_set` | `<source code>.<business concept code>`, the source being the dataset's (`datasets.source_id` → `sources.code`) | `no_sodir.field` |
 | `key_set_binary` | source id as one byte, followed by business concept id as one byte (`BLOB`) | `0x0801` (source 8, concept 1) |
 
-Both identify the same thing: Library frames use `key_set` (readable) in development and `key_set_binary` (compact) in production (see *Library views*). Datasets of the same source share a key set for a given concept, which is what lets their rows meet on the hook. One byte per id caps source and business concept ids at 255. The table build fails, keeping the previous table and logging the error, on a duplicate `id`, an unknown dataset or business concept, or an id above 255. Use the `add-hook` project skill to add one.
+Both identify the same thing: Library frames use `key_set` (readable) in development and `key_set_binary` (compact) in production (see *Library views*). Datasets of the same source share a key set for a given concept, which is what lets their rows meet on the hook. One byte per id caps source and business concept ids at 255. Hooks of the same key set must share `hook_encoding`, or their production values could never match. The table build fails, keeping the previous table and logging the error, on a duplicate `id`, an unknown dataset or business concept, an empty expression, an unknown encoding, mixed encodings in a key set, or an id above 255. Use the `add-hook` project skill to add one.
+
+**Development and production hooks may use different keys** (Sodir: the field name in development, the NPDID in production). They then don't always group rows the same way: a renamed field gets a new development hook but keeps its production one, and development hooks of two datasets only meet if both spell the name the same. A development result is not proof of the production one.
+
+**Known limit:** the Sodir production dataset's `prfNpdidInformationCarrier` also holds discoveries in test production (e.g. `16/1-12 Troldhaugen`), which are hooked as `field` too; they have no row in the field dataset.
 
 `datasets` has one row per Std/Lake table. A non-tabular dataset also has a row of its own with empty `keys` (no table); its flattened tables point to it, or to their parent table, through `parent_code`. The app (`storage/datasets.py`) follows `parent_code` to find the tables a download feeds. The keys are written into each table's SQL scripts.
 
@@ -216,7 +222,15 @@ Each Lake table can have a frame and a latest view, in development and/or produc
 |---|---|---|
 | Frame | `library.frame.<code>_dev` | `library.frame.<code>` |
 | Latest | `library.latest.<code>_dev` | `library.latest.<code>` |
-| Hook columns | `VARCHAR`: `key_set || '|' || <hook expression>` (`no_sodir.field|17196400`) | `BLOB`: `key_set_binary || <hook expression as UTF-8 bytes>` (`0x0801` + `'17196400'`) |
+| Hook columns | `VARCHAR`: `key_set || '|' || <hook_expression_dev>` (`no_sodir.field|EKOFISK`) | `BLOB`: `key_set_binary || <hook_expression_prod encoded per hook_encoding>` (`integer`, EKOFISK 43506: `0x0801` + `0x0000A9F2`, 6 bytes) |
+
+Production encodings, unsigned and big-endian so the hex reads like the number (a negative or too large value fails the cast, so the view fails instead of building a wrong hook):
+
+| `hook_encoding` | Expression | Bytes |
+|---|---|---|
+| `integer` | `key_set_binary || unhex(printf('%08x', (<expr>)::UINTEGER))` | 2 + 4 |
+| `bigint` | `key_set_binary || unhex(printf('%016x', (<expr>)::UBIGINT))` | 2 + 8 |
+| `varchar` | `key_set_binary || encode((<expr>)::VARCHAR)` | 2 + length |
 
 **Frame** (SCD2, one version per Lake row):
 

@@ -1,2 +1,2 @@
-id,business_concept_id,dataset_id,hook_expression
-1,1,1,prfNpdidInformationCarrier
+id,business_concept_id,dataset_id,hook_expression_dev,hook_expression_prod,hook_encoding
+1,1,1,prfInformationCarrier,prfNpdidInformationCarrier,integer

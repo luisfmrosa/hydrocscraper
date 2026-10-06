@@ -64,10 +64,10 @@ def test_one_open_version_per_key(lib):
 def test_hook_column(lib):
     hooks = lib.execute(f"SELECT DISTINCT prfInformationCarrier, HK_FIELD FROM {FRAME} ORDER BY 1").fetchall()
     assert hooks == [
-        ("EKOFISK", "no_sodir.field|43506"),
-        ("GULLFAKS", "no_sodir.field|43686"),
-        ("OSEBERG", "no_sodir.field|43625"),
-        ("TROLL", "no_sodir.field|46437"),
+        ("EKOFISK", "no_sodir.field|EKOFISK"),
+        ("GULLFAKS", "no_sodir.field|GULLFAKS"),
+        ("OSEBERG", "no_sodir.field|OSEBERG"),
+        ("TROLL", "no_sodir.field|TROLL"),
     ]
 
 

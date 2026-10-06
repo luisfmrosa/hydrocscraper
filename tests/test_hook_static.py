@@ -40,21 +40,32 @@ def load(static, tmp_path):
 def test_hooks_derive_key_sets(static, tmp_path):
     con = load(static, tmp_path)
     rows = con.execute(
-        "SELECT id, business_concept_id, dataset_id, hook_expression, key_set, key_set_binary "
-        "FROM hook.metadata.hooks"
+        "SELECT id, business_concept_id, dataset_id, hook_expression_dev, hook_expression_prod, "
+        "hook_encoding, key_set, key_set_binary FROM hook.metadata.hooks"
     ).fetchall()
     # dataset 1 is Sodir (source 8), business concept 1 is field
-    assert rows == [(1, 1, 1, "prfNpdidInformationCarrier", "no_sodir.field", b"\x08\x01")]
+    assert rows[0] == (1, 1, 1, "prfInformationCarrier", "prfNpdidInformationCarrier", "integer",
+                       "no_sodir.field", b"\x08\x01")
 
 
-HEADER = "id,business_concept_id,dataset_id,hook_expression\n"
+HEADER = "id,business_concept_id,dataset_id,hook_expression_dev,hook_expression_prod,hook_encoding\n"
+
+
+def test_empty_encoding_defaults_to_bigint(static, tmp_path):
+    (static / "hooks.csv").write_text(HEADER + "1,1,1,a,b,\n", encoding="utf-8")
+    con = load(static, tmp_path)
+    assert con.execute("SELECT hook_encoding FROM hook.metadata.hooks").fetchone()[0] == "bigint"
 
 
 @pytest.mark.parametrize("hooks, error", [
-    ("1,1,1,x\n1,1,1,x\n", "duplicate id 1"),
-    ("1,1,99,x\n", "unknown dataset_id 99"),
-    ("1,99,1,x\n", "unknown business_concept_id 99"),
-    ("1,1,1,\n", "empty hook_expression"),
+    ("1,1,1,a,b,integer\n1,1,1,a,b,integer\n", "duplicate id 1"),
+    ("1,1,99,a,b,integer\n", "unknown dataset_id 99"),
+    ("1,99,1,a,b,integer\n", "unknown business_concept_id 99"),
+    ("1,1,1,,b,integer\n", "empty hook_expression_dev"),
+    ("1,1,1,a,,integer\n", "empty hook_expression_prod"),
+    ("1,1,1,a,b,float\n", "unknown hook_encoding float"),
+    # same key set (no_sodir.field), different encodings
+    ("1,1,1,a,b,integer\n2,1,1,a,b,varchar\n", "different hook_encoding"),
 ])
 def test_invalid_hooks_fail(static, tmp_path, hooks, error):
     (static / "hooks.csv").write_text(HEADER + hooks, encoding="utf-8")
@@ -65,6 +76,6 @@ def test_invalid_hooks_fail(static, tmp_path, hooks, error):
 def test_ids_above_one_byte_fail(static, tmp_path):
     with (static / "business_concepts.csv").open("a", encoding="utf-8") as fh:
         fh.write("256,Big,Big,Too large for one byte\n")
-    (static / "hooks.csv").write_text(HEADER + "1,256,1,x\n", encoding="utf-8")
+    (static / "hooks.csv").write_text(HEADER + "1,256,1,a,b,integer\n", encoding="utf-8")
     with pytest.raises(duckdb.Error, match="must fit in one byte"):
         load(static, tmp_path)
