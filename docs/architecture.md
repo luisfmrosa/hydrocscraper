@@ -2,7 +2,14 @@
 
 ## Overview
 
-hydrocscraper collects official hydrocarbon production data from multiple sources and organises it in layers following the Hook methodology. The stack is cloud-ready: object storage uses the S3 API, catalogs live in Postgres, and DuckDB runs as a server in a container. The design rationale is in [architecture_v2.md](architecture_v2.md).
+hydrocscraper collects official hydrocarbon production data from multiple sources and organises it in layers following the Hook methodology.
+
+Design principles:
+
+- **Cloud-ready.** Data storage uses the S3 API; DuckDB runs as a server in its own container; DuckLake is the table format, with its catalogs in Postgres, which runs in a separate container.
+- **Infrastructure as code.** OpenTofu (with the Incus provider) builds the infrastructure and Ansible configures each container; an alternative Docker Compose setup uses RustFS as the S3 server.
+- **No credentials in git.** Secrets are rendered at deploy time from git-ignored files.
+- **Python collects, SQL transforms.** Python only downloads and stores files in Raw; every transformation after that is a static SQL script run on the DuckDB server.
 
 The same stack can be deployed two ways (see *Infrastructure* below): on an Incus server (`architecture/incus/`) or with Docker Compose (`architecture/docker/`). The diagram shows the Incus layout; in Docker the containers are `app`, `duckdb`, `postgres` and `rustfs`.
 
@@ -38,10 +45,15 @@ The same stack can be deployed two ways (see *Infrastructure* below): on an Incu
 |-------|---------|----------|
 | **Raw** | `hydroc-raw` (plain bucket) | Files exactly as received, plus `metadata/` (copies of the static Hook metadata) |
 | **Std** | `hydroc-std` (plain bucket) | Every Raw file as typed Parquet, flattened when not tabular. Derived from Raw; the Lake loads from it |
-| **Lake** | DuckLake `lake`, one schema per source | Append-only change records per Std table, e.g. `lake.npd.field_production_monthly` (see *Lake loading*) |
+| **Lake** | DuckLake `lake`, one schema per source | Append-only change records per Std table, e.g. `lake.npd.field_production_monthly` (see *Lake tables*) |
 | **Library** | DuckLake `library`, schemas `frame` and `latest` | SCD2-like Frame objects and latest-version views. *Planned.* |
 | **DWH** | DuckLake `dwh`, schema `supply` | Business views and models |
 | **Hook** | DuckLake `hook`, schemas `metadata`, `raw_views` and `std_views` | `metadata`: `sources`, `datasets`, `business_concepts`, `hooks` (static, from `data/static/`) and `watermark`. `raw_views`: one view per dataset over its Raw files. `std_views`: one view per Std table over its Parquet files |
+
+Every layer has its own bucket, `hydroc-<layer>`. Raw and Std are plain buckets of files; the other four are DuckLakes, each with its data in its own bucket and its catalog in its own Postgres database (`cat_hydroc_<layer>`) owned by its own user (`user_hydroc_<layer>`), all on the same Postgres instance. Separate catalogs and users leave room to segregate access per layer later.
+
+- **Library.** `frame` holds SCD2-like objects, each built on **one** Lake object (a table, a view or a materialized view; no joins), plus the Hook columns defined for it when it is created. `latest` holds views over the Frame objects that show only the current version of each row.
+- **DWH.** The space for business views and models built on the Library. It starts with one schema, `supply`.
 
 ### Raw bucket layout
 
@@ -67,6 +79,13 @@ hydroc-std/
 - `<table>` is the dataset, or `<dataset>_<sub_table>` for a flattened table of a non-tabular dataset.
 - One file per Std table per Raw file, with the Raw file's `year_month` and timestamp. Std is derived from Raw and can always be rebuilt from it: a full load converts the Raw files that have no Std file yet, and `--rebuild-std` converts them all again.
 
+**Why Std.** Every Lake table loads the same way, from typed Parquet, and schema and data-quality checks have one place: the entry to Std. Std duplicates Raw; this is accepted because Parquet is compressed (for NPD, Std takes about 35% of the Raw CSV size) and Std is a rebuildable cache, never a source of truth. Std keeps its full history, since the Lake's full load replays every Std file.
+
+**Flattened tables.** Flattening happens **only** for non-tabular datasets (e.g. JSON with nested structures). It is part of the Std script and is dataset-specific: one Std table per independent structure, including the top level.
+- Every table except the top level has an extra column `parent` linking it to its parent table: the parent row's business key values, cast to text and joined with the ASCII unit separator (`chr(31)`).
+- A flattened table's business key is `parent` plus its own key columns.
+- A non-tabular format DuckDB can't read (e.g. HTML) is first converted by Python to a readable Parquet file in Raw (see *Transformations*); the Std script flattens that.
+
 **Schema changes.** The Std script first checks the Raw file's columns against the expected list and fails on any missing or unexpected column (the raw view reads files with `union_by_name`, so a renamed column would otherwise silently become NULL). The failed file stays at status `raw` and has no Std file. Fix the raw view and Std script, then rerun: an incremental run retries the pending file, and a full run converts every file without a Std file. If the fix changes the Std output (types, columns), run `--mode full --rebuild-std`.
 
 ### Watermarks
@@ -88,7 +107,31 @@ hydroc-std/
 
 `data/static/{sources,datasets,business_concepts,hooks}.csv` are versioned in the repository; they are the only versioned content of `data/`. At every server start, `sql/ddl/45_hook_static.sql` copies each one to `s3://hydroc-raw/metadata/<name>/<name>.csv` and rebuilds `hook.metadata.<name>` from that copy (`CREATE OR REPLACE`), so the tables always follow the repository. Edit a CSV, then restart the server (Docker: `docker compose restart duckdb`; Incus: re-run Ansible).
 
-`datasets` has one row per Std/Lake table: `code` (`<source>_<dataset>`, or `<source>_<dataset>_<sub_table>` for a flattened table), `source_id` (→ `sources.id`), `type` (`FILE`, `API`, `TABLE`), `parent_code` and `keys` (the business key columns, comma-separated). A non-tabular dataset also has a row of its own with empty `keys` (no table); its flattened tables point to it, or to their parent table, through `parent_code`. The app (`storage/datasets.py`) follows `parent_code` to find the tables a download feeds. The keys are written into each table's SQL scripts.
+Update `sources.csv` and `datasets.csv` whenever a dataset is added, and `business_concepts.csv` and `hooks.csv` when new concepts or hooks are defined. Their columns:
+
+| File | Column | Description | Example |
+|------|--------|-------------|---------|
+| `sources.csv` | `id` | Surrogate key | `8` |
+| | `code` | Natural key | `npd` |
+| | `name` | Name of the data source | `Norway Sokkeldirektoratet (NPD)` |
+| | `scope` | `Public` or `Private` | `Public` |
+| | `url` | Website | `https://factpages.sodir.no/en/field` |
+| `datasets.csv` | `id` | Surrogate key | `1` |
+| | `code` | Natural key: `<source>_<dataset>`, or `<source>_<dataset>_<sub_table>` | `npd_field_production_monthly` |
+| | `name` | Name of the dataset | `NPD field production (monthly)` |
+| | `source_id` | → `sources.id` | `8` |
+| | `copyright` | `Yes` or `No` | `No` |
+| | `type` | `FILE`, `API` or `TABLE` | `FILE` |
+| | `format` | Source format | `CSV` |
+| | `parent_code` | Row it derives from (empty if none) | |
+| | `granularity` | Level of detail | `field` |
+| | `periodicity` | Level of time detail | `monthly` |
+| | `keys` | Business key columns, comma-separated | `prfNpdidInformationCarrier, prfYear, prfMonth` |
+| | `url` | Dataset page | |
+| `business_concepts.csv` | `id`, `code`, `name`, `description` | Business concepts, defined manually | `1, Field, Field, Geographical area of provenance of a product` |
+| `hooks.csv` | `id`, `code`, `name`, `description` | Hooks, defined manually | `1, field, Field, Geographical area of provenance of a product` |
+
+`datasets` has one row per Std/Lake table. A non-tabular dataset also has a row of its own with empty `keys` (no table); its flattened tables point to it, or to their parent table, through `parent_code`. The app (`storage/datasets.py`) follows `parent_code` to find the tables a download feeds. The keys are written into each table's SQL scripts.
 
 ### Transformations: static SQL
 
@@ -174,6 +217,7 @@ To add an object, add an idempotent script and a `.read` line to `init_server.sq
 
 The app talks to the server through `storage/duck.py`. It runs `CONNECT 'quack:<host>:9494' (DISABLE_SSL true)`, after which every statement executes on the server and can use fully qualified names such as `hook.metadata.watermark`. Behaviour of quack in DuckDB 2.0.0-dev to keep in mind:
 
+- **`quack_serve` returns immediately.** The CLI would exit at the end of the init file, so the systemd unit (and the Docker entrypoint) keeps its stdin open.
 - **Same build on both sides.** Different 2.0 dev builds can't talk to each other; the server answers with HTTP 500. `duckdb==` in `requirements.txt` and the server's staged build must match: `duckdb_staged` in Ansible (Incus) and `DUCKDB_STAGED` in `architecture/docker/duckdb/Dockerfile`. Both install the CLI with the official script (`https://install.duckdb.org`) pinned via `DUCKDB_STAGED=<commit>/<version>`; don't use `DUCKDB_VERSION=alpha`, which always fetches the newest alpha.
 - **AVX2 CPU required.** The 2.0 dev builds (wheel and CLI) crash with `Illegal instruction` on CPUs without AVX2. The homelab Incus server (Intel Pentium Silver J5005) has none, so the Incus stack can't run there until an official 2.0 release supports older CPUs. The Docker stack runs on any AVX2 machine.
 - **HTTPS by default.** `CONNECT` uses HTTPS for any host other than localhost, but the server only speaks HTTP. `HYDROC_QUACK_DISABLE_SSL=true` adds `(DISABLE_SSL true)`.
@@ -190,6 +234,8 @@ The app talks to the server through `storage/duck.py`. It runs `CONNECT 'quack:<
 |------|-----------|
 | `full` | Downloads the complete dataset into Raw, converts every Raw file that has no Std file yet (all of them with `--rebuild-std`), then rebuilds every Lake table of the dataset by replaying every Std file, which keeps the history of changes between downloads. A watermark row is appended after each step (`raw`, `std`, `lake`). |
 | `incremental` | First finishes a file left at `raw` or `std` by a failed run. Then downloads and compares against the latest watermark (NPD: the file's MD5 against the last stored file, so revisions of past months count); only when new data exists: stores the file, converts it to Std and loads its changes into the Lake, with a watermark row after each step. |
+
+The full load replays every Std file even when each file is a complete snapshot (e.g. NPD, whose latest file alone holds every row): the Lake's history of changes between downloads only exists by comparing consecutive files.
 
 Select what to run with `--datasets <code>` (repeatable) and/or `--sources <source>` (every dataset of a source); without either, every registered dataset runs.
 

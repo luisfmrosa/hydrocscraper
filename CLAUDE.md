@@ -13,7 +13,7 @@
 - **Std**: bucket `hydroc-std`, every Raw file as typed (and, if nested, flattened) Parquet. Derived from Raw and rebuildable; the Lake loads from it.
 - **Lake, Library, DWH, Hook**: DuckLakes with their catalogs in Postgres and their data in `hydroc-<layer>` buckets.
 
-It all runs on Incus. See `docs/architecture.md` and `docs/architecture_v2.md`.
+It all runs on Incus. See `docs/architecture.md`.
 
 ## Running
 
