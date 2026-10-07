@@ -6,9 +6,9 @@
 --
 -- Hooks (data/static/hooks.csv), production mode: BLOB
 -- key_set_binary || <hook_expression_prod encoded per hook_encoding>
---   HK_FIELD  hook 2  key_set no_sodir.field (0x0801)  expression fldNpdidField
---             encoding integer: 4 bytes, unsigned big-endian, so 6 bytes in
---             all (43437 -> 0x08010000A9AD); a negative or too large NPDID
+--   HK_FIELD  hook 2  key_set no_sodir.sup.field (0x080101)  expression fldNpdidField
+--             encoding integer: 4 bytes, unsigned big-endian, so 7 bytes in
+--             all (43437 -> 0x0801010000A9AD); a negative or too large NPDID
 --             fails the cast instead of building a wrong hook
 --
 -- Frame columns: the hooks, the Lake table's data columns, its lineage
@@ -25,7 +25,7 @@
 -- this script after every Lake load.
 CREATE OR REPLACE VIEW library.frame.no_sodir_field AS
 SELECT
-    '\x08\x01'::BLOB || unhex(printf('%08x', (fldNpdidField)::UINTEGER))  AS HK_FIELD,
+    '\x08\x01\x01'::BLOB || unhex(printf('%08x', (fldNpdidField)::UINTEGER))  AS HK_FIELD,
     fldNpdidField,
     fldName,
     cmpLongName,

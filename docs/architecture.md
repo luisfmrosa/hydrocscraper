@@ -48,7 +48,7 @@ The same stack can be deployed two ways (see *Infrastructure* below): on an Incu
 | **Lake** | DuckLake `lake`, one schema per source | Append-only change records per Std table, e.g. `lake.no_sodir.field_production_monthly` (see *Lake tables*) |
 | **Library** | DuckLake `library`, schemas `frame` and `latest` | SCD2 frame views over one Lake table each, with the hook columns, and latest-version views, e.g. `library.frame.no_sodir_field_production_monthly_dev` (see *Library views*) |
 | **DWH** | DuckLake `dwh`, schema `supply` | Business views and models |
-| **Hook** | DuckLake `hook`, schemas `metadata`, `raw_views` and `std_views` | `metadata`: `sources`, `datasets`, `business_concepts`, `hooks` (static, from `data/static/`) and `watermark`. `raw_views`: one view per dataset over its Raw files. `std_views`: one view per Std table over its Parquet files |
+| **Hook** | DuckLake `hook`, schemas `metadata`, `raw_views` and `std_views` | `metadata`: `sources`, `datasets`, `business_domains`, `business_concepts`, `hooks` (static, from `data/static/`) and `watermark`. `raw_views`: one view per dataset over its Raw files. `std_views`: one view per Std table over its Parquet files |
 
 Every layer has its own bucket, `hydroc-<layer>`. Raw and Std are plain buckets of files; the other four are DuckLakes, each with its data in its own bucket and its catalog in its own Postgres database (`cat_hydroc_<layer>`) owned by its own user (`user_hydroc_<layer>`), all on the same Postgres instance. Separate catalogs and users leave room to segregate access per layer later.
 
@@ -62,7 +62,7 @@ hydroc-raw/
 ├── <source>/<dataset>/year_month=<YYYY-MM>/<stem>_<YYYYMMDD_HHmm><ext>
 │     e.g. no_sodir/field_production_monthly/year_month=2026-09/field_production_monthly_20260929_1000.csv
 └── metadata/
-    └── <name>/<name>.csv        sources, datasets, business_concepts, hooks
+    └── <name>/<name>.csv        sources, datasets, business_domains, business_concepts, hooks
 ```
 
 - `year_month` defaults to the UTC month of the download. A scraper may pass the reference period instead, for sources that publish one file per period.
@@ -105,9 +105,9 @@ hydroc-std/
 
 ### Static Hook metadata
 
-`data/static/{sources,datasets,business_concepts,hooks}.csv` are versioned in the repository; they are the only versioned content of `data/`. At every server start, `sql/ddl/45_hook_static.sql` copies each one to `s3://hydroc-raw/metadata/<name>/<name>.csv` and rebuilds `hook.metadata.<name>` from that copy (`CREATE OR REPLACE`), so the tables always follow the repository. Edit a CSV, then restart the server (Docker: `docker compose restart duckdb`; Incus: re-run Ansible).
+`data/static/{sources,datasets,business_domains,business_concepts,hooks}.csv` are versioned in the repository; they are the only versioned content of `data/`. At every server start, `sql/ddl/45_hook_static.sql` copies each one to `s3://hydroc-raw/metadata/<name>/<name>.csv` and rebuilds `hook.metadata.<name>` from that copy (`CREATE OR REPLACE`), so the tables always follow the repository. Edit a CSV, then restart the server (Docker: `docker compose restart duckdb`; Incus: re-run Ansible).
 
-Update `sources.csv` and `datasets.csv` whenever a dataset is added, and `business_concepts.csv` and `hooks.csv` when new concepts or hooks are defined. Their columns:
+Update `sources.csv` and `datasets.csv` whenever a dataset is added, and `business_domains.csv`, `business_concepts.csv` and `hooks.csv` when new domains, concepts or hooks are defined. Their columns:
 
 | File | Column | Description | Example |
 |------|--------|-------------|---------|
@@ -128,7 +128,11 @@ Update `sources.csv` and `datasets.csv` whenever a dataset is added, and `busine
 | | `periodicity` | Level of time detail | `monthly` |
 | | `keys` | Business key columns, comma-separated | `prfNpdidInformationCarrier, prfYear, prfMonth` |
 | | `url` | Dataset page | |
-| `business_concepts.csv` | `id`, `code`, `name`, `description` | Business concepts, defined manually | `1, field, Field, Geographical area of provenance of a product` |
+| `business_domains.csv` | `id` | Surrogate key, ≤ 255 (one byte of `key_set_binary`) | `1` |
+| | `code` | Natural key: exactly 3 lowercase letters or digits | `sup` |
+| | `name`, `description` | Free text | `Supply` |
+| `business_concepts.csv` | `id`, `code`, `name`, `description` | Business concepts, defined manually; `id` unique across domains | `1, field, Field, Geographical area of provenance of a product` |
+| | `business_domain_id` | → `business_domains.id`: the domain grouping the concept | `1` |
 | `hooks.csv` | `id` | Surrogate key, incremented for each row | `1` |
 | | `business_concept_id` | → `business_concepts.id` | `1` |
 | | `dataset_id` | → `datasets.id` | `1` |
@@ -140,10 +144,12 @@ Update `sources.csv` and `datasets.csv` whenever a dataset is added, and `busine
 
 | Column | Derivation | Example |
 |--------|------------|---------|
-| `key_set` | `<source code>.<business concept code>`, the source being the dataset's (`datasets.source_id` → `sources.code`) | `no_sodir.field` |
-| `key_set_binary` | source id as one byte, followed by business concept id as one byte (`BLOB`) | `0x0801` (source 8, concept 1) |
+| `key_set` | `<source code>.<business domain code>.<business concept code>`, the source being the dataset's (`datasets.source_id` → `sources.code`) and the domain the concept's | `no_sodir.sup.field` |
+| `key_set_binary` | source id, business domain id and business concept id, one byte each (`BLOB`) | `0x080101` (source 8, domain 1, concept 1) |
 
-Both identify the same thing: Library frames use `key_set` (readable) in development and `key_set_binary` (compact) in production (see *Library views*). Datasets of the same source share a key set for a given concept, which is what lets their rows meet on the hook. One byte per id caps source and business concept ids at 255. Hooks of the same key set must share `hook_encoding`, or their production values could never match. The table build fails, keeping the previous table and logging the error, on a duplicate `id`, an unknown dataset or business concept, an empty expression, an unknown encoding, mixed encodings in a key set, or an id above 255. Use the `add-hook` project skill to add one.
+Both identify the same thing: Library frames use `key_set` (readable) in development and `key_set_binary` (compact) in production (see *Library views*). Datasets of the same source share a key set for a given concept, which is what lets their rows meet on the hook. One byte per id caps source, business domain and business concept ids at 255. Hooks of the same key set must share `hook_encoding`, or their production values could never match. The table build fails, keeping the previous table and logging the error, on a duplicate `id`, an unknown dataset or business concept, an empty expression, an unknown encoding, mixed encodings in a key set, or an id above 255. Use the `add-hook` project skill to add one.
+
+**Business domains** group business concepts (Supply; elsewhere Finance, HR, Sales…). A concept's `id` is unique across domains, so the domain adds no uniqueness to a hook, but it is part of every hook of the concept: **a concept's domain never changes once a hook uses it**; to move a concept, create a new one. `business_domains` fails to build on a duplicate `id` or `code`, a code that isn't 3 lowercase letters or digits, an empty name or an id above 255; `business_concepts` on a duplicate `id` or `code`, an empty code, or a missing or unknown `business_domain_id`. Use the `add-business-domain` project skill to add one.
 
 **Development and production hooks may use different keys** (Sodir: the field name in development, the NPDID in production). They then don't always group rows the same way: a renamed field gets a new development hook but keeps its production one, and development hooks of two datasets only meet if both spell the name the same. A development result is not proof of the production one.
 
@@ -222,15 +228,15 @@ Each Lake table can have a frame and a latest view, in development and/or produc
 |---|---|---|
 | Frame | `library.frame.<code>_dev` | `library.frame.<code>` |
 | Latest | `library.latest.<code>_dev` | `library.latest.<code>` |
-| Hook columns | `VARCHAR`: `key_set || '|' || <hook_expression_dev>` (`no_sodir.field|EKOFISK`) | `BLOB`: `key_set_binary || <hook_expression_prod encoded per hook_encoding>` (`integer`, EKOFISK 43506: `0x0801` + `0x0000A9F2`, 6 bytes) |
+| Hook columns | `VARCHAR`: `key_set || '|' || <hook_expression_dev>` (`no_sodir.sup.field|EKOFISK`) | `BLOB`: `key_set_binary || <hook_expression_prod encoded per hook_encoding>` (`integer`, EKOFISK 43506: `0x080101` + `0x0000A9F2`, 7 bytes) |
 
 Production encodings, unsigned and big-endian so the hex reads like the number (a negative or too large value fails the cast, so the view fails instead of building a wrong hook):
 
 | `hook_encoding` | Expression | Bytes |
 |---|---|---|
-| `integer` | `key_set_binary || unhex(printf('%08x', (<expr>)::UINTEGER))` | 2 + 4 |
-| `bigint` | `key_set_binary || unhex(printf('%016x', (<expr>)::UBIGINT))` | 2 + 8 |
-| `varchar` | `key_set_binary || encode((<expr>)::VARCHAR)` | 2 + length |
+| `integer` | `key_set_binary || unhex(printf('%08x', (<expr>)::UINTEGER))` | 3 + 4 |
+| `bigint` | `key_set_binary || unhex(printf('%016x', (<expr>)::UBIGINT))` | 3 + 8 |
+| `varchar` | `key_set_binary || encode((<expr>)::VARCHAR)` | 3 + length |
 
 **Frame** (SCD2, one version per Lake row):
 

@@ -6,7 +6,7 @@
 --
 -- Hooks (data/static/hooks.csv), development mode: VARCHAR
 -- '<key_set>|<hook_expression_dev>'
---   HK_FIELD  hook 1  key_set no_sodir.field  expression prfInformationCarrier
+--   HK_FIELD  hook 1  key_set no_sodir.sup.field  expression prfInformationCarrier
 -- (the field name; production uses the NPDID: a renamed field gets a new
 -- development hook but keeps its production one)
 --
@@ -24,7 +24,7 @@
 -- this script after every Lake load.
 CREATE OR REPLACE VIEW library.frame.no_sodir_field_production_monthly_dev AS
 SELECT
-    'no_sodir.field' || '|' || (prfInformationCarrier)::VARCHAR        AS HK_FIELD,
+    'no_sodir.sup.field' || '|' || (prfInformationCarrier)::VARCHAR    AS HK_FIELD,
     prfNpdidInformationCarrier,
     prfYear,
     prfMonth,

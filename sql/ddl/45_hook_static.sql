@@ -14,10 +14,99 @@ COPY (FROM read_csv('/opt/duckdb/static/datasets.csv'))
 CREATE OR REPLACE TABLE hook.metadata.datasets AS
     FROM read_csv('s3://hydroc-raw/metadata/datasets/datasets.csv');
 
+COPY (FROM read_csv('/opt/duckdb/static/business_domains.csv'))
+    TO 's3://hydroc-raw/metadata/business_domains/business_domains.csv' (HEADER);
+-- Business domains group business concepts. code: exactly 3 lowercase letters
+-- or digits (it becomes part of key_set); id: one byte of key_set_binary.
+-- Any invalid row (duplicate id or code, bad code, empty name, id above 255)
+-- fails the statement, so the previous table is kept and the error shows in
+-- the server log.
+CREATE OR REPLACE TABLE hook.metadata.business_domains AS
+WITH d AS (
+    SELECT
+        id::INTEGER                                         AS id,
+        trim(code)                                          AS code,
+        nullif(trim(name), '')                              AS name,
+        description,
+        count(*) OVER (PARTITION BY id::INTEGER)            AS id_count,
+        count(*) OVER (PARTITION BY trim(code))             AS code_count
+    FROM read_csv('s3://hydroc-raw/metadata/business_domains/business_domains.csv', all_varchar = true)
+)
+SELECT
+    CASE
+        WHEN id IS NULL
+            THEN error('business_domains.csv: empty id')
+        WHEN id_count > 1
+            THEN error('business_domains.csv: duplicate id ' || id)
+        WHEN id NOT BETWEEN 0 AND 255
+            THEN error('business_domains.csv id ' || id || ': must fit in one byte (0-255) for key_set_binary')
+        ELSE id
+    END                                                     AS id,
+    CASE
+        WHEN code IS NULL OR NOT regexp_full_match(code, '[a-z0-9]{3}')
+            THEN error('business_domains.csv id ' || id || ': code ' || coalesce(code, '(empty)')
+                       || ' must be exactly 3 lowercase letters or digits')
+        WHEN code_count > 1
+            THEN error('business_domains.csv: duplicate code ' || code)
+        ELSE code
+    END                                                     AS code,
+    CASE
+        WHEN name IS NULL
+            THEN error('business_domains.csv id ' || id || ': empty name')
+        ELSE name
+    END                                                     AS name,
+    description
+FROM d
+ORDER BY 1;
+
 COPY (FROM read_csv('/opt/duckdb/static/business_concepts.csv'))
     TO 's3://hydroc-raw/metadata/business_concepts/business_concepts.csv' (HEADER);
+-- Every business concept belongs to one business domain. Its id is unique
+-- across domains, so the domain adds no uniqueness to a hook; but the domain
+-- is part of every hook of the concept (key_set, key_set_binary), so a
+-- concept's domain must never change once a hook uses it (create a new
+-- concept instead). Any invalid row (duplicate id or code, empty code, missing
+-- or unknown business_domain_id) fails the statement.
 CREATE OR REPLACE TABLE hook.metadata.business_concepts AS
-    FROM read_csv('s3://hydroc-raw/metadata/business_concepts/business_concepts.csv');
+WITH c AS (
+    SELECT
+        c.id::INTEGER                                       AS id,
+        nullif(trim(c.code), '')                            AS code,
+        c.name,
+        c.description,
+        c.business_domain_id::INTEGER                       AS business_domain_id,
+        count(*) OVER (PARTITION BY c.id::INTEGER)          AS id_count,
+        count(*) OVER (PARTITION BY trim(c.code))           AS code_count,
+        bd.id                                               AS bd_id
+    FROM read_csv('s3://hydroc-raw/metadata/business_concepts/business_concepts.csv', all_varchar = true) c
+    LEFT JOIN hook.metadata.business_domains bd ON bd.id = c.business_domain_id::INTEGER
+)
+SELECT
+    CASE
+        WHEN id IS NULL
+            THEN error('business_concepts.csv: empty id')
+        WHEN id_count > 1
+            THEN error('business_concepts.csv: duplicate id ' || id)
+        ELSE id
+    END                                                     AS id,
+    CASE
+        WHEN code IS NULL
+            THEN error('business_concepts.csv id ' || id || ': empty code')
+        WHEN code_count > 1
+            THEN error('business_concepts.csv: duplicate code ' || code)
+        ELSE code
+    END                                                     AS code,
+    name,
+    description,
+    CASE
+        WHEN business_domain_id IS NULL
+            THEN error('business_concepts.csv id ' || id || ': empty business_domain_id')
+        WHEN bd_id IS NULL
+            THEN error('business_concepts.csv id ' || id || ': unknown business_domain_id ' || business_domain_id)
+        ELSE business_domain_id
+    END                                                     AS business_domain_id
+FROM c
+ORDER BY 1;
 
 COPY (FROM read_csv('/opt/duckdb/static/hooks.csv'))
     TO 's3://hydroc-raw/metadata/hooks/hooks.csv' (HEADER);
@@ -36,9 +125,11 @@ COPY (FROM read_csv('/opt/duckdb/static/hooks.csv'))
 --                           varchar  UTF-8 text
 -- The hook identifiers are derived here, so they always follow the
 -- referenced rows:
---   key_set         <source code>.<business concept code>   (e.g. no_sodir.field)
---   key_set_binary  source id (1 byte) || business concept id (1 byte)
---                   (e.g. 0x0801); ids above 255 are rejected
+--   key_set         <source code>.<business domain code>.<business concept code>
+--                   (e.g. no_sodir.sup.field)
+--   key_set_binary  source id (1 byte) || business domain id (1 byte)
+--                   || business concept id (1 byte) (e.g. 0x080101); ids
+--                   above 255 are rejected
 -- Hooks of the same key set must share an encoding, or their production
 -- values could never match. Any invalid row (duplicate id, unknown dataset or
 -- business concept, empty expression, unknown encoding, mixed encodings in a
@@ -59,11 +150,14 @@ WITH h AS (
         s.id                                                AS s_id,
         s.code                                              AS s_code,
         bc.id                                               AS bc_id,
-        bc.code                                             AS bc_code
+        bc.code                                             AS bc_code,
+        bd.id                                               AS bd_id,
+        bd.code                                             AS bd_code
     FROM read_csv('s3://hydroc-raw/metadata/hooks/hooks.csv', all_varchar = true) h
     LEFT JOIN hook.metadata.datasets d ON d.id = h.dataset_id::INTEGER
     LEFT JOIN hook.metadata.sources s ON s.id = d.source_id
     LEFT JOIN hook.metadata.business_concepts bc ON bc.id = h.business_concept_id::INTEGER
+    LEFT JOIN hook.metadata.business_domains bd ON bd.id = bc.business_domain_id
 ),
 checked AS (
     SELECT
@@ -95,13 +189,14 @@ checked AS (
                 THEN error('hooks.csv id ' || id || ': dataset ' || d_code || ' has an unknown source_id')
             WHEN bc_id IS NULL
                 THEN error('hooks.csv id ' || id || ': unknown business_concept_id ' || business_concept_id)
-            ELSE s_code || '.' || bc_code
+            ELSE s_code || '.' || bd_code || '.' || bc_code
         END                                                 AS key_set,
         CASE
-            WHEN s_id NOT BETWEEN 0 AND 255 OR bc_id NOT BETWEEN 0 AND 255
-                THEN error('hooks.csv id ' || id || ': source id ' || s_id || ' and business concept id '
-                           || bc_id || ' must fit in one byte (0-255) for key_set_binary')
-            ELSE unhex(printf('%02x', s_id)) || unhex(printf('%02x', bc_id))
+            WHEN s_id NOT BETWEEN 0 AND 255 OR bd_id NOT BETWEEN 0 AND 255 OR bc_id NOT BETWEEN 0 AND 255
+                THEN error('hooks.csv id ' || id || ': source id ' || s_id || ', business domain id ' || bd_id
+                           || ' and business concept id ' || bc_id
+                           || ' must fit in one byte (0-255) for key_set_binary')
+            ELSE unhex(printf('%02x', s_id)) || unhex(printf('%02x', bd_id)) || unhex(printf('%02x', bc_id))
         END                                                 AS key_set_binary
     FROM h
 )

@@ -23,15 +23,15 @@ A frame is a view over **one** Lake table (no joins). Each Lake row (new, change
 | Script | `sql/ddl/library/<code>_dev.sql` | `sql/ddl/library/<code>.sql` |
 | Hook expression | `hook_expression_dev` | `hook_expression_prod`, encoded per `hook_encoding` |
 | Hook column | `VARCHAR`: `'<key_set>' \|\| '\|' \|\| (<hook_expression_dev>)::VARCHAR` | `BLOB`: `'<key_set_binary as \x escapes>'::BLOB \|\| <encoded value>` (below) |
-| Sodir example | `no_sodir.field\|EKOFISK` | `integer`: `0x0801` + `0x0000A9F2` (EKOFISK, 43506) |
+| Sodir example | `no_sodir.sup.field\|EKOFISK` | `integer`: `0x080101` + `0x0000A9F2` (EKOFISK, 43506) |
 
 Production encoded value, as unsigned big-endian integers so the hex reads like the number (a negative or too large value fails the cast, so the view fails instead of building a wrong hook):
 
 | `hook_encoding` | Encoded value | Hook bytes |
 |---|---|---|
-| `integer` | `unhex(printf('%08x', (<hook_expression_prod>)::UINTEGER))` | 2 + 4 |
-| `bigint` | `unhex(printf('%016x', (<hook_expression_prod>)::UBIGINT))` | 2 + 8 |
-| `varchar` | `encode((<hook_expression_prod>)::VARCHAR)` | 2 + length |
+| `integer` | `unhex(printf('%08x', (<hook_expression_prod>)::UINTEGER))` | 3 + 4 |
+| `bigint` | `unhex(printf('%016x', (<hook_expression_prod>)::UBIGINT))` | 3 + 8 |
+| `varchar` | `encode((<hook_expression_prod>)::VARCHAR)` | 3 + length |
 
 Development and production hooks may use different keys (Sodir: field name vs NPDID), so they don't always group rows the same way (a renamed field gets a new development hook).
 
@@ -51,7 +51,7 @@ ORDER BY h.id
 
 (or read `data/static/hooks.csv` and `business_concepts.csv`). Show them and ask the user to confirm, for each hook, the expression of the chosen mode (and the encoding in production). If they change one, update `hooks.csv` first (`add-hook` skill), so the file stays the single definition. If the dataset has no hook, say so and offer the `add-hook` skill; continue without hook columns only if the user agrees.
 
-Write the key sets into the view as literals (static SQL). Production: `key_set_binary` `0801` → `'\x08\x01'::BLOB`.
+Write the key sets into the view as literals (static SQL). Development: `'no_sodir.sup.field'`. Production: `key_set_binary` `080101` → `'\x08\x01\x01'::BLOB`.
 
 ## 3. Write the script
 
@@ -113,7 +113,7 @@ Add `.read library/<code>[_dev].sql` to `sql/ddl/init_server.sql`, under `-- Lib
    -- no NULL hook: must return 0
    SELECT count(*) FROM library.frame.<code>[_dev] WHERE HK_<NAME> IS NULL;
    ```
-   Production: also check `hex(HK_<NAME>)` starts with the hook's `hex(key_set_binary)` and every hook has the encoding's length (`octet_length(HK_<NAME>)` = 6 for `integer`, 10 for `bigint`).
+   Production: also check `hex(HK_<NAME>)` starts with the hook's `hex(key_set_binary)` and every hook has the encoding's length (`octet_length(HK_<NAME>)` = 7 for `integer`, 11 for `bigint`).
 
 ## Changing a frame
 

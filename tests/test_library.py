@@ -65,10 +65,10 @@ def test_one_open_version_per_key(lib):
 def test_hook_column(lib):
     hooks = lib.execute(f"SELECT DISTINCT prfInformationCarrier, HK_FIELD FROM {FRAME} ORDER BY 1").fetchall()
     assert hooks == [
-        ("EKOFISK", "no_sodir.field|EKOFISK"),
-        ("GULLFAKS", "no_sodir.field|GULLFAKS"),
-        ("OSEBERG", "no_sodir.field|OSEBERG"),
-        ("TROLL", "no_sodir.field|TROLL"),
+        ("EKOFISK", "no_sodir.sup.field|EKOFISK"),
+        ("GULLFAKS", "no_sodir.sup.field|GULLFAKS"),
+        ("OSEBERG", "no_sodir.sup.field|OSEBERG"),
+        ("TROLL", "no_sodir.sup.field|TROLL"),
     ]
 
 
@@ -130,10 +130,10 @@ def test_production_frame_matches_development(lib):
 
 def test_production_hook_is_the_npdid_as_4_bytes(lib):
     hooks = dict(lib.execute(f"SELECT DISTINCT prfInformationCarrier, HK_FIELD FROM {PROD_FRAME}").fetchall())
-    # key_set_binary 0x0801, then the NPDID big-endian: 43506 = 0x0000A9F2
+    # key_set_binary 0x080101, then the NPDID big-endian: 43506 = 0x0000A9F2
     assert hooks == {
-        "EKOFISK": bytes.fromhex("08010000A9F2"),
-        "GULLFAKS": bytes.fromhex("08010000AAA6"),
-        "OSEBERG": bytes.fromhex("08010000AA69"),
-        "TROLL": bytes.fromhex("08010000B565"),
+        "EKOFISK": bytes.fromhex("0801010000A9F2"),
+        "GULLFAKS": bytes.fromhex("0801010000AAA6"),
+        "OSEBERG": bytes.fromhex("0801010000AA69"),
+        "TROLL": bytes.fromhex("0801010000B565"),
     }

@@ -6,9 +6,9 @@
 --
 -- Hooks (data/static/hooks.csv), production mode: BLOB
 -- key_set_binary || <hook_expression_prod encoded per hook_encoding>
---   HK_FIELD  hook 1  key_set no_sodir.field (0x0801)  expression prfNpdidInformationCarrier
---             encoding integer: 4 bytes, unsigned big-endian, so 6 bytes in
---             all (43437 -> 0x08010000A9AD); a negative or too large NPDID
+--   HK_FIELD  hook 1  key_set no_sodir.sup.field (0x080101)  expression prfNpdidInformationCarrier
+--             encoding integer: 4 bytes, unsigned big-endian, so 7 bytes in
+--             all (43437 -> 0x0801010000A9AD); a negative or too large NPDID
 --             fails the cast instead of building a wrong hook
 -- prfNpdidInformationCarrier also holds discoveries in test production
 -- (e.g. 16/1-12 Troldhaugen): hooked as field too, with no row in the
@@ -28,7 +28,7 @@
 -- this script after every Lake load.
 CREATE OR REPLACE VIEW library.frame.no_sodir_field_production_monthly AS
 SELECT
-    '\x08\x01'::BLOB || unhex(printf('%08x', (prfNpdidInformationCarrier)::UINTEGER))  AS HK_FIELD,
+    '\x08\x01\x01'::BLOB || unhex(printf('%08x', (prfNpdidInformationCarrier)::UINTEGER))  AS HK_FIELD,
     prfNpdidInformationCarrier,
     prfYear,
     prfMonth,

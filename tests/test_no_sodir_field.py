@@ -201,17 +201,17 @@ def test_development_hook_is_the_name(con):
     load(con, "full")
     library(con)
     hooks = con.execute(f"SELECT DISTINCT HK_FIELD FROM {LATEST}_dev ORDER BY 1").fetchall()
-    assert [h[0] for h in hooks] == ["no_sodir.field|EKOFISK", "no_sodir.field|GULLFAKS",
-                                     "no_sodir.field|OSEBERG", "no_sodir.field|TROLL"]
+    assert [h[0] for h in hooks] == ["no_sodir.sup.field|EKOFISK", "no_sodir.sup.field|GULLFAKS",
+                                     "no_sodir.sup.field|OSEBERG", "no_sodir.sup.field|TROLL"]
 
 
 def test_production_hook_is_the_npdid_as_4_bytes(con):
     load(con, "full")
     library(con)
     hooks = dict(con.execute(f"SELECT fldName, HK_FIELD FROM {LATEST}").fetchall())
-    # key_set_binary 0x0801, then 43506 = 0x0000A9F2 big-endian
-    assert hooks["EKOFISK"] == b"\x08\x01\x00\x00\xa9\xf2"
-    assert {len(h) for h in hooks.values()} == {6}
+    # key_set_binary 0x080101, then 43506 = 0x0000A9F2 big-endian
+    assert hooks["EKOFISK"] == b"\x08\x01\x01\x00\x00\xa9\xf2"
+    assert {len(h) for h in hooks.values()} == {7}
     assert con.execute(f"SELECT typeof(HK_FIELD) FROM {FRAME} LIMIT 1").fetchone()[0] == "BLOB"
 
 
