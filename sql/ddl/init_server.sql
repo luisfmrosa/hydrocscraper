@@ -19,6 +19,7 @@
 .read lake/no_sodir_field_production_monthly.sql
 .read lake/no_sodir_field.sql
 .read lake/no_sodir_company.sql
+.read lake/no_sodir_company_reserves.sql
 
 -- Raw and std views fail while their S3 prefix is still empty ("No files
 -- found"). With bail off the server still starts; the app re-runs the raw
@@ -26,9 +27,11 @@
 .read raw_views/020_no_sodir_field_production_monthly.sql
 .read raw_views/021_no_sodir_field.sql
 .read raw_views/022_no_sodir_company.sql
+.read raw_views/023_no_sodir_company_reserves.sql
 .read std_views/020_no_sodir_field_production_monthly.sql
 .read std_views/021_no_sodir_field.sql
 .read std_views/022_no_sodir_company.sql
+.read std_views/023_no_sodir_company_reserves.sql
 
 -- Library frame and latest views, one script per Lake table and mode
 -- (<code>.sql production, <code>_dev.sql development). They fail until the
@@ -39,5 +42,7 @@
 .read library/no_sodir_field_dev.sql
 .read library/no_sodir_company.sql
 .read library/no_sodir_company_dev.sql
+.read library/no_sodir_company_reserves.sql
+.read library/no_sodir_company_reserves_dev.sql
 
 .read 99_serve.sql

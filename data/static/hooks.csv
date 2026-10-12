@@ -3,3 +3,5 @@ id,business_concept_id,dataset_id,hook_expression_dev,hook_expression_prod,hook_
 2,1,2,fldName,fldNpdidField,integer,
 3,2,2,cmpLongName,cmpNpdidCompany,integer,Operator
 4,2,3,cmpLongName,cmpNpdidCompany,integer,
+5,2,4,cmpLongName,cmpNpdidCompany,integer,
+6,1,4,fldName,fldNpdidField,integer,
