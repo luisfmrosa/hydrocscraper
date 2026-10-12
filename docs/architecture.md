@@ -139,17 +139,23 @@ Update `sources.csv` and `datasets.csv` whenever a dataset is added, and `busine
 | | `hook_expression_dev` | SQL over the dataset's columns (as in its Lake table) giving the concept's business key in development, used as text: usually a readable one | `prfInformationCarrier` |
 | | `hook_expression_prod` | The same in production: usually the source's id | `prfNpdidInformationCarrier` |
 | | `hook_encoding` | How the production value is encoded: `integer` (4 bytes), `bigint` (8 bytes, the default when empty) or `varchar` (UTF-8). Integers are unsigned and big-endian | `integer` |
+| | `hook_role` | Optional: the role the concept plays in the dataset, an uppercase letter then letters or digits. Lets a dataset hook a concept once per role; doesn't change the key set | `Operator` (hook 3: a field's operator company) |
 
-**Hooks.** A hook ties a business concept to a dataset, through hook expressions that give the concept's business key in that dataset, one per mode of the Library views. `hooks.csv` holds only what is decided by hand (`id`, `business_concept_id`, `dataset_id`, the two expressions, `hook_encoding`); `45_hook_static.sql` derives the hook identifiers when it builds `hook.metadata.hooks`, so they always follow the referenced rows:
+**Hooks.** A hook ties a business concept to a dataset, through hook expressions that give the concept's business key in that dataset, one per mode of the Library views. `hooks.csv` holds only what is decided by hand (`id`, `business_concept_id`, `dataset_id`, the two expressions, `hook_encoding`, `hook_role`); `45_hook_static.sql` derives the hook identifiers when it builds `hook.metadata.hooks`, so they always follow the referenced rows:
 
 | Column | Derivation | Example |
 |--------|------------|---------|
 | `key_set` | `<source code>.<business domain code>.<business concept code>`, the source being the dataset's (`datasets.source_id` → `sources.code`) and the domain the concept's | `no_sodir.sup.field` |
 | `key_set_binary` | source id, business domain id and business concept id, one byte each (`BLOB`) | `0x080101` (source 8, domain 1, concept 1) |
+| `hook_column` | The hook's column in the Library frames: `HK_` + the business concept's name in uppercase (other characters → `_`), then `__<hook_role>` if any | `HK_FIELD`, `HK_COMPANY__Operator` |
 
-Both identify the same thing: Library frames use `key_set` (readable) in development and `key_set_binary` (compact) in production (see *Library views*). Datasets of the same source share a key set for a given concept, which is what lets their rows meet on the hook. One byte per id caps source, business domain and business concept ids at 255. Hooks of the same key set must share `hook_encoding`, or their production values could never match. The table build fails, keeping the previous table and logging the error, on a duplicate `id`, an unknown dataset or business concept, an empty expression, an unknown encoding, mixed encodings in a key set, or an id above 255. Use the `add-hook` project skill to add one.
+Both identify the same thing: Library frames use `key_set` (readable) in development and `key_set_binary` (compact) in production (see *Library views*). Datasets of the same source share a key set for a given concept, which is what lets their rows meet on the hook. One byte per id caps source, business domain and business concept ids at 255. Hooks of the same key set must share `hook_encoding`, or their production values could never match. The table build fails, keeping the previous table and logging the error, on a duplicate `id`, an unknown dataset or business concept, an empty expression, an unknown encoding, an invalid role, a second hook for the same dataset, concept and role, mixed encodings in a key set, or an id above 255.
+
+**Roles.** A dataset has one hook per business concept and role. The role names the column and tells which part the concept plays (Sodir fields: `HK_COMPANY__Operator`, the field's operator); a dataset listing operators and licensees would hook Company twice, with two roles. Roles don't change the key set, so an operator and a licensee that are the same company meet on the hook. Use the `add-hook` project skill to add one.
 
 **Business domains** group business concepts (Supply; elsewhere Finance, HR, Sales…). A concept's `id` is unique across domains, so the domain adds no uniqueness to a hook, but it is part of every hook of the concept: **a concept's domain never changes once a hook uses it**; to move a concept, create a new one. `business_domains` fails to build on a duplicate `id` or `code`, a code that isn't 3 lowercase letters or digits, an empty name or an id above 255; `business_concepts` on a duplicate `id` or `code`, an empty code, or a missing or unknown `business_domain_id`. Use the `add-business-domain` project skill to add one.
+
+**NULL hooks.** A hook expression that is NULL gives a NULL hook: the row has no instance of the concept (Sodir fields: the 12 shut-down fields without an operator have no `HK_COMPANY__Operator`). This is accepted when agreed in the `add-hook` skill; a placeholder value is never substituted, since it would join every such row to one fake instance. Both expressions of a hook must be NULL on the same rows.
 
 **Development and production hooks may use different keys** (Sodir: the field name in development, the NPDID in production). They then don't always group rows the same way: a renamed field gets a new development hook but keeps its production one, and development hooks of two datasets only meet if both spell the name the same. A development result is not proof of the production one.
 
@@ -242,7 +248,7 @@ Production encodings, unsigned and big-endian so the hex reads like the number (
 
 | Column | Content |
 |--------|---------|
-| `HK_<NAME>` | One per hook of the dataset (`hook.metadata.hooks`, in hook `id` order), named after the business concept's name in uppercase (`HK_FIELD`); key sets written into the view as literals |
+| `HK_<NAME>` | One per hook of the dataset (`hook.metadata.hooks`, in hook `id` order), named by the hook's `hook_column` (`HK_FIELD`, `HK_COMPANY__Operator`); key sets written into the view as literals |
 | data columns | The Lake table's |
 | `___Lake_md5`, `___Lake_datasource`, `___Lake_sourcefile` | Lineage of the version |
 | `___Effective_From` | When the version was observed: `___Lake_load_timestamp` |

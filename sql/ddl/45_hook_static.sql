@@ -123,6 +123,13 @@ COPY (FROM read_csv('/opt/duckdb/static/hooks.csv'))
 --                           integer  4 bytes (0 to 4,294,967,295)
 --                           bigint   8 bytes (empty = bigint)
 --                           varchar  UTF-8 text
+--   hook_role             optional: the role the concept plays in the dataset
+--                         (e.g. Operator for a field's operator company), an
+--                         uppercase letter then letters or digits. A dataset
+--                         has one hook per (business concept, role), so the
+--                         same concept can be hooked once per role. The role
+--                         doesn't change the key set: an operator and a
+--                         licensee are the same company and meet on the hook.
 -- The hook identifiers are derived here, so they always follow the
 -- referenced rows:
 --   key_set         <source code>.<business domain code>.<business concept code>
@@ -130,9 +137,14 @@ COPY (FROM read_csv('/opt/duckdb/static/hooks.csv'))
 --   key_set_binary  source id (1 byte) || business domain id (1 byte)
 --                   || business concept id (1 byte) (e.g. 0x080101); ids
 --                   above 255 are rejected
+--   hook_column     the hook's column in the Library frames: HK_ || the
+--                   business concept's name in uppercase (any character
+--                   other than a letter or digit -> _), then __<hook_role>
+--                   if any (e.g. HK_FIELD, HK_COMPANY__Operator)
 -- Hooks of the same key set must share an encoding, or their production
 -- values could never match. Any invalid row (duplicate id, unknown dataset or
--- business concept, empty expression, unknown encoding, mixed encodings in a
+-- business concept, empty expression, unknown encoding, invalid role, a
+-- second hook for the same dataset, concept and role, mixed encodings in a
 -- key set, id above 255) fails the statement, so the previous table is kept
 -- and the error shows in the server log.
 CREATE OR REPLACE TABLE hook.metadata.hooks AS
@@ -144,7 +156,12 @@ WITH h AS (
         nullif(trim(h.hook_expression_dev::VARCHAR), '')    AS hook_expression_dev,
         nullif(trim(h.hook_expression_prod::VARCHAR), '')   AS hook_expression_prod,
         coalesce(lower(nullif(trim(h.hook_encoding::VARCHAR), '')), 'bigint') AS hook_encoding,
+        nullif(trim(h.hook_role::VARCHAR), '')              AS hook_role,
         count(*) OVER (PARTITION BY h.id)                   AS id_count,
+        count(*) OVER (PARTITION BY h.dataset_id::INTEGER, h.business_concept_id::INTEGER,
+                                    coalesce(nullif(trim(h.hook_role::VARCHAR), ''), ''))
+                                                            AS role_count,
+        bc.name                                             AS bc_name,
         d.id                                                AS d_id,
         d.code                                              AS d_code,
         s.id                                                AS s_id,
@@ -181,8 +198,20 @@ checked AS (
             ELSE hook_encoding
         END                                                 AS hook_encoding,
         CASE
+            WHEN hook_role IS NOT NULL AND NOT regexp_full_match(hook_role, '[A-Z][A-Za-z0-9]*')
+                THEN error('hooks.csv id ' || id || ': hook_role ' || hook_role
+                           || ' must be an uppercase letter followed by letters or digits')
+            ELSE hook_role
+        END                                                 AS hook_role,
+        'HK_' || upper(regexp_replace(bc_name, '[^A-Za-z0-9]', '_', 'g'))
+            || coalesce('__' || hook_role, '')              AS hook_column,
+        CASE
             WHEN id_count > 1
                 THEN error('hooks.csv: duplicate id ' || id)
+            WHEN role_count > 1
+                THEN error('hooks.csv id ' || id || ': dataset ' || dataset_id || ' has more than one hook for business concept '
+                           || business_concept_id || ' with role ' || coalesce(hook_role, '(none)')
+                           || ' (give each a different hook_role)')
             WHEN d_id IS NULL
                 THEN error('hooks.csv id ' || id || ': unknown dataset_id ' || dataset_id)
             WHEN s_id IS NULL
@@ -208,7 +237,9 @@ SELECT
                        || ' has hooks with different hook_encoding')
         ELSE hook_encoding
     END                                                     AS hook_encoding,
+    hook_role,
     key_set,
-    key_set_binary
+    key_set_binary,
+    hook_column
 FROM checked
 ORDER BY id;

@@ -42,11 +42,17 @@ FRAME, LATEST = "library.frame.no_sodir_field", "library.latest.no_sodir_field"
 JAN, FEB, MAR = (datetime(2026, m, 1, 10, 0, tzinfo=timezone.utc) for m in (1, 2, 3))
 
 
+def operator(status):
+    # a shut-down field has no operator: cmpLongName and cmpNpdidCompany empty
+    return ("", "") if status == "Shut down" else ("Equinor Energy AS", 32011216)
+
+
 def csv_text(rows, synced):
     lines = [HEADER] + [
         # fldMainSupplyBase empty, as for many fields
-        f"{name},Equinor Energy AS,{status},1/1-1,26.11.1972,North sea,PRODUCTION LICENCE,018,,OIL,"
-        f"1,{NPDID[name]},2,3,https://f/{NPDID[name]},https://m/{NPDID[name]},07.05.2025,{synced},{synced}"
+        f"{name},{operator(status)[0]},{status},1/1-1,26.11.1972,North sea,PRODUCTION LICENCE,018,,OIL,"
+        f"1,{NPDID[name]},2,{operator(status)[1]},https://f/{NPDID[name]},https://m/{NPDID[name]},"
+        f"07.05.2025,{synced},{synced}"
         for name, status in rows
     ]
     return "﻿" + "\r\n".join(lines) + "\r\n\r\n"
@@ -96,7 +102,7 @@ def changes(con, key):
 
 
 def lake_rows(con):
-    return sorted(con.execute("SELECT * EXCLUDE (___Lake_sourcefile) FROM lake.no_sodir.field").fetchall())
+    return con.execute("SELECT * EXCLUDE (___Lake_sourcefile) FROM lake.no_sodir.field ORDER BY ALL").fetchall()
 
 
 def test_scripts_resolve():
@@ -213,6 +219,21 @@ def test_production_hook_is_the_npdid_as_4_bytes(con):
     assert hooks["EKOFISK"] == b"\x08\x01\x01\x00\x00\xa9\xf2"
     assert {len(h) for h in hooks.values()} == {7}
     assert con.execute(f"SELECT typeof(HK_FIELD) FROM {FRAME} LIMIT 1").fetchone()[0] == "BLOB"
+
+
+def test_company_hooks_are_the_operator(con):
+    load(con, "full")
+    library(con)
+    dev = dict(con.execute(f"SELECT fldName, HK_COMPANY__Operator FROM {LATEST}_dev").fetchall())
+    prod = dict(con.execute(f"SELECT fldName, HK_COMPANY__Operator FROM {LATEST}").fetchall())
+    # key_set no_sodir.sup.cmp / 0x080102, then 32011216 = 0x01E873D0 big-endian
+    assert dev["EKOFISK"] == "no_sodir.sup.cmp|Equinor Energy AS"
+    assert prod["EKOFISK"] == bytes.fromhex("08010201E873D0")
+    # TROLL is shut down: no operator, no company hook
+    assert dev["TROLL"] is None and prod["TROLL"] is None
+    for suffix in ("", "_dev"):
+        columns = [r[0] for r in con.execute(f"DESCRIBE {FRAME}{suffix}").fetchall()]
+        assert columns[:2] == ["HK_FIELD", "HK_COMPANY__Operator"]     # hook id order
 
 
 def test_production_hook_rejects_a_negative_npdid(con):

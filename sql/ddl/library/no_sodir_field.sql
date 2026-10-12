@@ -10,6 +10,10 @@
 --             encoding integer: 4 bytes, unsigned big-endian, so 7 bytes in
 --             all (43437 -> 0x0801010000A9AD); a negative or too large NPDID
 --             fails the cast instead of building a wrong hook
+--   HK_COMPANY__Operator  hook 3  key_set no_sodir.sup.cmp (0x080102)  expression cmpNpdidCompany
+--             (the operator), encoding integer, 7 bytes in all
+--             (32011216 -> 0x08010201E873D0); NULL for a field without an
+--             operator (shut-down fields): no company to hook
 --
 -- Frame columns: the hooks, the Lake table's data columns, its lineage
 -- columns (___Lake_md5, ___Lake_datasource, ___Lake_sourcefile), then
@@ -25,7 +29,8 @@
 -- this script after every Lake load.
 CREATE OR REPLACE VIEW library.frame.no_sodir_field AS
 SELECT
-    '\x08\x01\x01'::BLOB || unhex(printf('%08x', (fldNpdidField)::UINTEGER))  AS HK_FIELD,
+    '\x08\x01\x01'::BLOB || unhex(printf('%08x', (fldNpdidField)::UINTEGER))    AS HK_FIELD,
+    '\x08\x01\x02'::BLOB || unhex(printf('%08x', (cmpNpdidCompany)::UINTEGER))  AS HK_COMPANY__Operator,
     fldNpdidField,
     fldName,
     cmpLongName,

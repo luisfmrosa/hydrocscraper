@@ -1,2 +1,3 @@
 id,code,name,description,business_domain_id
 1,field,Field,Geographical area of provenance of a product,1
+2,cmp,Company,Companies exploring hydrocarbon fields,1

@@ -9,7 +9,7 @@ Input: a dataset with a Lake table, i.e. a row of `data/static/datasets.csv` wit
 
 A frame is a view over **one** Lake table (no joins). Each Lake row (new, changed or deleted) becomes one version; the hooks are added here, never in the Lake.
 
-**Worked examples (tested):** development `sql/ddl/library/no_sodir_field_production_monthly_dev.sql` and `sql/ddl/library/no_sodir_field_dev.sql`; production (`integer` hook) `sql/ddl/library/no_sodir_field.sql`.
+**Worked examples (tested):** development `sql/ddl/library/no_sodir_field_production_monthly_dev.sql` and `sql/ddl/library/no_sodir_field_dev.sql`; production (`integer` hook) `sql/ddl/library/no_sodir_field.sql`. The `no_sodir_field` scripts have two hooks (`HK_FIELD`, `HK_COMPANY__Operator`), the second NULL for fields without an operator.
 
 ## 1. Ask
 
@@ -40,7 +40,7 @@ Both modes can exist side by side (different names and files).
 ## 2. Get the hooks
 
 ```sql
-SELECT h.id, bc.name, h.hook_expression_dev, h.hook_expression_prod, h.hook_encoding,
+SELECT h.id, h.hook_column, h.hook_expression_dev, h.hook_expression_prod, h.hook_encoding,
        h.key_set, hex(h.key_set_binary)
 FROM hook.metadata.hooks h
 JOIN hook.metadata.business_concepts bc ON bc.id = h.business_concept_id
@@ -59,7 +59,7 @@ One file holds both views: `sql/ddl/library/<code>[_dev].sql`. Copy the worked e
 
 **Frame**, `CREATE OR REPLACE VIEW library.frame.<code>[_dev] AS SELECT … FROM lake.<source>.<table>`, columns in this order:
 
-1. **Hooks,** one per hook in hook `id` order, named `HK_` + the business concept's `name` in uppercase, any character other than a letter or digit replaced by `_` (`Field` → `HK_FIELD`). Value per the mode table. Use the mode's expression (`hook_expression_dev` or `hook_expression_prod`) and keep the parentheses around it.
+1. **Hooks,** one per hook in hook `id` order, named by the hook's `hook_column` (derived in `hook.metadata.hooks`: `HK_` + the business concept's `name` in uppercase, any character other than a letter or digit replaced by `_`, then `__<hook_role>` if the hook has a role: `HK_FIELD`, `HK_COMPANY__Operator`). Never name a column by hand: if a role is missing, set `hook_role` in `hooks.csv` (`add-hook` skill). `tests/test_hook_static.py` checks that every frame script has exactly its hooks' columns, in order. Value per the mode table. Use the mode's expression (`hook_expression_dev` or `hook_expression_prod`) and keep the parentheses around it.
 2. **Data columns:** every data column of the Lake table, same names and order.
 3. **Lineage:** `___Lake_md5`, `___Lake_datasource`, `___Lake_sourcefile`.
 4. **SCD2 columns:**
@@ -110,8 +110,9 @@ Add `.read library/<code>[_dev].sql` to `sql/ddl/init_server.sql`, under `-- Lib
    -- exactly one open version per key: must return 0
    SELECT count(*) FROM (SELECT 1 FROM library.frame.<code>[_dev] WHERE ___Effective_To = 'infinity'::TIMESTAMPTZ
                          GROUP BY <keys> HAVING count(*) <> 1);
-   -- no NULL hook: must return 0
-   SELECT count(*) FROM library.frame.<code>[_dev] WHERE HK_<NAME> IS NULL;
+   -- no NULL hook where the expression has a value: must return 0 (a NULL hook is
+   -- accepted only where the hook expression itself is NULL, agreed in add-hook)
+   SELECT count(*) FROM library.frame.<code>[_dev] WHERE HK_<NAME> IS NULL AND (<hook expression of the mode>) IS NOT NULL;
    ```
    Production: also check `hex(HK_<NAME>)` starts with the hook's `hex(key_set_binary)` and every hook has the encoding's length (`octet_length(HK_<NAME>)` = 7 for `integer`, 11 for `bigint`).
 

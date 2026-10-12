@@ -9,6 +9,9 @@
 --   HK_FIELD  hook 2  key_set no_sodir.sup.field  expression fldName
 -- (the field name; production uses the NPDID: a renamed field gets a new
 -- development hook but keeps its production one)
+--   HK_COMPANY__Operator  hook 3  key_set no_sodir.sup.cmp  expression cmpLongName
+-- (the operator's name; NULL for a field without an operator, i.e.
+-- shut-down fields: no company to hook)
 --
 -- Frame columns: the hooks, the Lake table's data columns, its lineage
 -- columns (___Lake_md5, ___Lake_datasource, ___Lake_sourcefile), then
@@ -25,6 +28,7 @@
 CREATE OR REPLACE VIEW library.frame.no_sodir_field_dev AS
 SELECT
     'no_sodir.sup.field' || '|' || (fldName)::VARCHAR               AS HK_FIELD,
+    'no_sodir.sup.cmp' || '|' || (cmpLongName)::VARCHAR             AS HK_COMPANY__Operator,
     fldNpdidField,
     fldName,
     cmpLongName,

@@ -2,6 +2,7 @@
 temporary folder standing in for /opt/duckdb/static, and s3://hydroc-raw/ is
 pointed at another one."""
 
+import re
 import shutil
 from pathlib import Path
 
@@ -41,15 +42,34 @@ def test_hooks_derive_key_sets(static, tmp_path):
     con = load(static, tmp_path)
     rows = con.execute(
         "SELECT id, business_concept_id, dataset_id, hook_expression_dev, hook_expression_prod, "
-        "hook_encoding, key_set, key_set_binary FROM hook.metadata.hooks"
+        "hook_encoding, hook_role, key_set, key_set_binary, hook_column FROM hook.metadata.hooks"
     ).fetchall()
     # dataset 1 is Sodir (source 8), business concept 1 is field, in business
-    # domain 1 (sup); dataset 2 (Sodir fields) shares the key set and its encoding
+    # domain 1 (sup); dataset 2 (Sodir fields) shares the key set and its encoding,
+    # and also hooks business concept 2 (cmp, same domain) as the field's operator
     assert rows == [
-        (1, 1, 1, "prfInformationCarrier", "prfNpdidInformationCarrier", "integer",
-         "no_sodir.sup.field", b"\x08\x01\x01"),
-        (2, 1, 2, "fldName", "fldNpdidField", "integer", "no_sodir.sup.field", b"\x08\x01\x01"),
+        (1, 1, 1, "prfInformationCarrier", "prfNpdidInformationCarrier", "integer", None,
+         "no_sodir.sup.field", b"\x08\x01\x01", "HK_FIELD"),
+        (2, 1, 2, "fldName", "fldNpdidField", "integer", None,
+         "no_sodir.sup.field", b"\x08\x01\x01", "HK_FIELD"),
+        (3, 2, 2, "cmpLongName", "cmpNpdidCompany", "integer", "Operator",
+         "no_sodir.sup.cmp", b"\x08\x01\x02", "HK_COMPANY__Operator"),
     ]
+
+
+def test_library_scripts_use_the_hook_columns(static, tmp_path):
+    # every frame script of a hooked dataset has exactly its hooks' columns, in id order
+    con = load(static, tmp_path)
+    hooks = con.execute(
+        "SELECT d.code, list(h.hook_column ORDER BY h.id) FROM hook.metadata.hooks h "
+        "JOIN hook.metadata.datasets d ON d.id = h.dataset_id GROUP BY d.code"
+    ).fetchall()
+    library = ROOT / "sql" / "ddl" / "library"
+    for code, columns in hooks:
+        scripts = [p for p in (library / f"{code}.sql", library / f"{code}_dev.sql") if p.exists()]
+        for script in scripts:
+            found = re.findall(r"\bAS (HK_\w+)", script.read_text(encoding="utf-8"))
+            assert found == columns, script.name
 
 
 def test_business_domains_and_concepts(static, tmp_path):
@@ -59,6 +79,7 @@ def test_business_domains_and_concepts(static, tmp_path):
     ]
     assert con.execute("SELECT id, code, business_domain_id FROM hook.metadata.business_concepts").fetchall() == [
         (1, "field", 1),
+        (2, "cmp", 1),
     ]
 
 
@@ -95,24 +116,50 @@ def test_invalid_business_concepts_fail(static, tmp_path, concepts, error):
         load(static, tmp_path)
 
 
-HEADER = "id,business_concept_id,dataset_id,hook_expression_dev,hook_expression_prod,hook_encoding\n"
+HEADER = "id,business_concept_id,dataset_id,hook_expression_dev,hook_expression_prod,hook_encoding,hook_role\n"
 
 
 def test_empty_encoding_defaults_to_bigint(static, tmp_path):
-    (static / "hooks.csv").write_text(HEADER + "1,1,1,a,b,\n", encoding="utf-8")
+    (static / "hooks.csv").write_text(HEADER + "1,1,1,a,b,,\n", encoding="utf-8")
     con = load(static, tmp_path)
     assert con.execute("SELECT hook_encoding FROM hook.metadata.hooks").fetchone()[0] == "bigint"
 
 
+def test_one_hook_per_role(static, tmp_path):
+    # the same concept three times in a dataset, once per role; one key set
+    (static / "hooks.csv").write_text(
+        HEADER + "1,2,2,a,b,integer,Operator\n2,2,2,c,d,integer,Licensee\n3,2,2,e,f,integer,\n",
+        encoding="utf-8")
+    con = load(static, tmp_path)
+    assert con.execute("SELECT hook_column, key_set FROM hook.metadata.hooks").fetchall() == [
+        ("HK_COMPANY__Operator", "no_sodir.sup.cmp"),
+        ("HK_COMPANY__Licensee", "no_sodir.sup.cmp"),
+        ("HK_COMPANY", "no_sodir.sup.cmp"),
+    ]
+
+
+def test_hook_column_replaces_other_characters(static, tmp_path):
+    with (static / "business_concepts.csv").open("a", encoding="utf-8") as fh:
+        fh.write("3,ogf,Oil & gas field,x,1\n")
+    (static / "hooks.csv").write_text(HEADER + "1,3,2,a,b,integer,Main2\n", encoding="utf-8")
+    con = load(static, tmp_path)
+    assert con.execute("SELECT hook_column FROM hook.metadata.hooks").fetchone()[0] == "HK_OIL___GAS_FIELD__Main2"
+
+
 @pytest.mark.parametrize("hooks, error", [
-    ("1,1,1,a,b,integer\n1,1,1,a,b,integer\n", "duplicate id 1"),
-    ("1,1,99,a,b,integer\n", "unknown dataset_id 99"),
-    ("1,99,1,a,b,integer\n", "unknown business_concept_id 99"),
-    ("1,1,1,,b,integer\n", "empty hook_expression_dev"),
-    ("1,1,1,a,,integer\n", "empty hook_expression_prod"),
-    ("1,1,1,a,b,float\n", "unknown hook_encoding float"),
-    # same key set (no_sodir.field), different encodings
-    ("1,1,1,a,b,integer\n2,1,1,a,b,varchar\n", "different hook_encoding"),
+    ("1,1,1,a,b,integer,\n1,1,2,a,b,integer,\n", "duplicate id 1"),
+    ("1,1,99,a,b,integer,\n", "unknown dataset_id 99"),
+    ("1,99,1,a,b,integer,\n", "unknown business_concept_id 99"),
+    ("1,1,1,,b,integer,\n", "empty hook_expression_dev"),
+    ("1,1,1,a,,integer,\n", "empty hook_expression_prod"),
+    ("1,1,1,a,b,float,\n", "unknown hook_encoding float"),
+    # same key set (no_sodir.sup.field), different encodings
+    ("1,1,1,a,b,integer,\n2,1,2,a,b,varchar,\n", "different hook_encoding"),
+    # same dataset and concept: each hook needs its own role
+    ("1,2,2,a,b,integer,\n2,2,2,c,d,integer,\n", r"more than one hook for business concept 2 with role \(none\)"),
+    ("1,2,2,a,b,integer,Operator\n2,2,2,c,d,integer,Operator\n", "with role Operator"),
+    ("1,2,2,a,b,integer,operator\n", "hook_role operator must be"),
+    ("1,2,2,a,b,integer,Main operator\n", "hook_role Main operator must be"),
 ])
 def test_invalid_hooks_fail(static, tmp_path, hooks, error):
     (static / "hooks.csv").write_text(HEADER + hooks, encoding="utf-8")
@@ -123,6 +170,6 @@ def test_invalid_hooks_fail(static, tmp_path, hooks, error):
 def test_ids_above_one_byte_fail(static, tmp_path):
     with (static / "business_concepts.csv").open("a", encoding="utf-8") as fh:
         fh.write("256,big,Big,Too large for one byte,1\n")
-    (static / "hooks.csv").write_text(HEADER + "1,256,1,a,b,integer\n", encoding="utf-8")
+    (static / "hooks.csv").write_text(HEADER + "1,256,1,a,b,integer,\n", encoding="utf-8")
     with pytest.raises(duckdb.Error, match="must fit in one byte"):
         load(static, tmp_path)
