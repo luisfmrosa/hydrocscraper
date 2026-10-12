@@ -54,6 +54,8 @@ def test_hooks_derive_key_sets(static, tmp_path):
          "no_sodir.sup.field", b"\x08\x01\x01", "HK_FIELD"),
         (3, 2, 2, "cmpLongName", "cmpNpdidCompany", "integer", "Operator",
          "no_sodir.sup.cmp", b"\x08\x01\x02", "HK_COMPANY__Operator"),
+        (4, 2, 3, "cmpLongName", "cmpNpdidCompany", "integer", None,
+         "no_sodir.sup.cmp", b"\x08\x01\x02", "HK_COMPANY"),
     ]
 
 

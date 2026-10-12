@@ -18,14 +18,17 @@
 -- Lake tables, one script per dataset
 .read lake/no_sodir_field_production_monthly.sql
 .read lake/no_sodir_field.sql
+.read lake/no_sodir_company.sql
 
 -- Raw and std views fail while their S3 prefix is still empty ("No files
 -- found"). With bail off the server still starts; the app re-runs the raw
 -- view before every Std step and the std view before every Lake load.
 .read raw_views/020_no_sodir_field_production_monthly.sql
 .read raw_views/021_no_sodir_field.sql
+.read raw_views/022_no_sodir_company.sql
 .read std_views/020_no_sodir_field_production_monthly.sql
 .read std_views/021_no_sodir_field.sql
+.read std_views/022_no_sodir_company.sql
 
 -- Library frame and latest views, one script per Lake table and mode
 -- (<code>.sql production, <code>_dev.sql development). They fail until the
@@ -34,5 +37,7 @@
 .read library/no_sodir_field_production_monthly_dev.sql
 .read library/no_sodir_field.sql
 .read library/no_sodir_field_dev.sql
+.read library/no_sodir_company.sql
+.read library/no_sodir_company_dev.sql
 
 .read 99_serve.sql

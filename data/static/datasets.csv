@@ -1,3 +1,4 @@
 id,code,name,source_id,copyright,type,format,parent_code,granularity,periodicity,keys,url
 1,no_sodir_field_production_monthly,Sodir field production (monthly),8,No,FILE,CSV,,field,monthly,"prfNpdidInformationCarrier, prfYear, prfMonth",https://factpages.sodir.no/en/field/TableView/Production/Saleable/Monthly
 2,no_sodir_field,Sodir fields,8,No,FILE,CSV,,field,snapshot,fldNpdidField,https://factpages.sodir.no/en/field/TableView/Overview
+3,no_sodir_company,Sodir companies,8,No,FILE,CSV,,company,snapshot,cmpNpdidCompany,https://factpages.sodir.no/en/company/TableView/All

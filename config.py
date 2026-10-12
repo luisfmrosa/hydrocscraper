@@ -46,5 +46,9 @@ SCRAPER_REGISTRY = {
         "source": "no_sodir",
         "class": "scrapers.no_sodir.field.NoSodirField",
     },
+    "no_sodir_company": {
+        "source": "no_sodir",
+        "class": "scrapers.no_sodir.company.NoSodirCompany",
+    },
     # More datasets added here as they are implemented
 }

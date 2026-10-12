@@ -10,25 +10,22 @@ written like Sodir's export (BOM, CRLF, trailing blank line, dd.mm.yyyy):
 """
 
 from datetime import date, datetime, timezone
-from pathlib import Path
-
 import duckdb
 import pytest
 
 from scrapers import base
-from scrapers.no_sodir.field import NoSodirField, _period
+from scrapers.no_sodir._tableview import _period
+from scrapers.no_sodir.field import NoSodirField
+import sodir_tableview as st
 from storage import lake, std
-from test_lake import DDL, Env, run
+from test_lake import DDL
 
 HEADER = (
     "fldName,cmpLongName,fldCurrentActivitySatus,wlbName,wlbCompletionDate,fldMainArea,fldOwnerKind,"
     "fldOwnerName,fldMainSupplyBase,fldHcType,fldNpdidOwner,fldNpdidField,wlbNpdidWellbore,cmpNpdidCompany,"
     "fldFactPageUrl,fldFactMapUrl,fldDateUpdated,fldDateUpdatedMax,DatesyncNPD"
 )
-PREFIX = "no_sodir/field/"
-G1 = PREFIX + "year_month=2026-01/field_20260101_1000.csv"
-G2 = PREFIX + "year_month=2026-02/field_20260201_1000.csv"
-G3 = PREFIX + "year_month=2026-03/field_20260301_1000.csv"
+G1, G2, G3 = (st.raw_key("field", m) for m in (1, 2, 3))
 NPDID = {"EKOFISK": 43506, "TROLL": 46437, "GULLFAKS": 43686, "OSEBERG": 43625}
 
 # (field, status) per file, and the file's export date (DatesyncNPD and fldDateUpdatedMax)
@@ -59,39 +56,21 @@ def csv_text(rows, synced):
 
 
 def std_key(raw_key):
-    folder, name = raw_key.rsplit("/", 1)
-    return folder + "/no_sodir_field_" + name[len("field_"):-len(".csv")] + ".parquet"
+    return st.std_key("field", raw_key)
 
 
 @pytest.fixture
 def con(tmp_path_factory):
-    raw = tmp_path_factory.mktemp("raw")
-    for key, (rows, synced) in SNAPSHOTS.items():
-        path = raw / key
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(csv_text(rows, synced).encode("utf-8"))
-    std_dir = tmp_path_factory.mktemp("std")
-    con = Env(duckdb.connect(), raw.as_posix() + "/", std_dir.as_posix() + "/")
-    for layer in ("lake", "hook", "library"):
-        con.execute(f"ATTACH ':memory:' AS {layer}")
-    for path in (DDL / "20_library.sql", DDL / "40_hook.sql", DDL / "41_hook_watermark.sql",
-                 std.std_scripts("no_sodir", "field")[0]):
-        run(con, path)
-    for key in SNAPSHOTS:
-        (std_dir / std_key(key)).parent.mkdir(parents=True, exist_ok=True)
-        run(con, std.std_scripts("no_sodir", "field")[1], {"raw_file": con.bucket + key})
-    for path in lake.lake_scripts("no_sodir", "field", "full")[:2]:
-        run(con, path)
-    return con
+    files = {key: csv_text(rows, synced).encode("utf-8") for key, (rows, synced) in SNAPSHOTS.items()}
+    return st.build(tmp_path_factory, "field", files)
 
 
 def load(con, mode):
-    return run(con, lake.lake_scripts("no_sodir", "field", mode)[2])[0][0]
+    return st.load(con, "field", mode)
 
 
 def library(con):
-    for path in lake.library_scripts("no_sodir", "field"):
-        run(con, path)
+    st.library(con, "field")
 
 
 def changes(con, key):
@@ -102,7 +81,7 @@ def changes(con, key):
 
 
 def lake_rows(con):
-    return con.execute("SELECT * EXCLUDE (___Lake_sourcefile) FROM lake.no_sodir.field ORDER BY ALL").fetchall()
+    return st.lake_rows(con, "field")
 
 
 def test_scripts_resolve():
@@ -135,24 +114,18 @@ def test_std_types_dates_and_nulls(con):
 
 
 def test_std_fails_on_schema_change(con):
-    key = PREFIX + "year_month=2026-04/field_20260401_1000.csv"
-    path = Path(con.bucket) / key
-    path.parent.mkdir(parents=True, exist_ok=True)
+    key = st.raw_key("field", 4)
     text = csv_text([("EKOFISK", "Producing")], "01.04.2026")
-    path.write_text(text.replace("fldCurrentActivitySatus", "fldCurrentActivityStatus"), encoding="utf-8")
-    (Path(con.std_bucket) / std_key(key)).parent.mkdir(parents=True, exist_ok=True)
+    st.write_raw(con, key, text.replace("fldCurrentActivitySatus", "fldCurrentActivityStatus").encode("utf-8"))
     with pytest.raises(duckdb.Error, match="missing: fldCurrentActivitySatus; unexpected: fldCurrentActivityStatus"):
-        run(con, std.std_scripts("no_sodir", "field")[1], {"raw_file": con.bucket + key})
+        st.run_std(con, "field", key)
 
 
 def test_std_fails_on_a_bad_date(con):
-    key = PREFIX + "year_month=2026-04/field_20260401_1000.csv"
-    path = Path(con.bucket) / key
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(csv_text([("EKOFISK", "Producing")], "2026-04-01"), encoding="utf-8")
-    (Path(con.std_bucket) / std_key(key)).parent.mkdir(parents=True, exist_ok=True)
+    key = st.raw_key("field", 4)
+    st.write_raw(con, key, csv_text([("EKOFISK", "Producing")], "2026-04-01").encode("utf-8"))
     with pytest.raises(duckdb.Error):
-        run(con, std.std_scripts("no_sodir", "field")[1], {"raw_file": con.bucket + key})
+        st.run_std(con, "field", key)
 
 
 def test_std_md5_ignores_export_dates(con):
