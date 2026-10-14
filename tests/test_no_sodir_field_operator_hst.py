@@ -6,8 +6,10 @@ operator company and start date; a company can operate a field more than once:
 
   O1 (Jan): TROLL Hydro twice (1986-1995, 2000-2006), TROLL Equinor (current),
             SNORRE Saga
-  O2 (Feb): the export date moved; TROLL Hydro otherwise unchanged, TROLL
-            Equinor closed, TROLL Aker new (current), SNORRE Saga gone
+  O2 (Feb): the export date moved; TROLL Hydro otherwise unchanged (its
+            second period only re-dated by Sodir: fldOperatorDateUpdated
+            moved), TROLL Equinor closed, TROLL Aker new (current), SNORRE
+            Saga gone
   O3 (Mar): as O2 with a new export date, SNORRE Saga back
 """
 
@@ -30,6 +32,7 @@ FIELDS = {"TROLL": 46437, "SNORRE": 43718}
 COMPANIES = {"Norsk Hydro": 2367, "Equinor": 17237817, "Aker": 28111080, "Saga": 3176}
 HYDRO_1 = ("TROLL", "Norsk Hydro", "01.01.1986", "31.12.1995", "20.02.2026")
 HYDRO_2 = ("TROLL", "Norsk Hydro", "01.01.2000", "31.12.2006", "20.02.2026")
+HYDRO_2_REDATED = HYDRO_2[:4] + ("01.02.2026",)
 EQUINOR = ("TROLL", "Equinor", "01.01.2007", "", "20.02.2026")
 EQUINOR_2 = ("TROLL", "Equinor", "01.01.2007", "31.01.2026", "01.02.2026")
 AKER = ("TROLL", "Aker", "01.02.2026", "", "01.02.2026")
@@ -37,8 +40,8 @@ SAGA = ("SNORRE", "Saga", "01.01.1988", "31.12.1999", "20.02.2026")
 # (field, company, from, to, date updated) per file, and its export date
 SNAPSHOTS = {
     O1: ([HYDRO_1, HYDRO_2, EQUINOR, SAGA], "01.01.2026"),
-    O2: ([HYDRO_1, HYDRO_2, EQUINOR_2, AKER], "01.02.2026"),
-    O3: ([HYDRO_1, HYDRO_2, EQUINOR_2, AKER, SAGA], "01.03.2026"),
+    O2: ([HYDRO_1, HYDRO_2_REDATED, EQUINOR_2, AKER], "01.02.2026"),
+    O3: ([HYDRO_1, HYDRO_2_REDATED, EQUINOR_2, AKER, SAGA], "01.03.2026"),
 }
 FRAME, LATEST = "library.frame.no_sodir_field_operator_hst", "library.latest.no_sodir_field_operator_hst"
 JAN, FEB, MAR = (datetime(2026, m, 1, 10, 0, tzinfo=timezone.utc) for m in (1, 2, 3))
@@ -110,20 +113,22 @@ def test_std_fails_on_an_empty_start_date(con):
         st.run_std(con, DATASET, key)
 
 
-def test_std_md5_ignores_the_export_date(con):
-    # TROLL Hydro (first period) differs between files only by datesyncNPD
+def test_std_md5_ignores_the_export_and_update_dates(con):
+    # TROLL Hydro differs between files only by datesyncNPD (first period),
+    # or by datesyncNPD and fldOperatorDateUpdated (second period)
     md5s = con.execute(
-        "SELECT count(DISTINCT ___Std_md5), count(DISTINCT datesyncNPD) "
-        f"FROM hook.std_views.no_sodir_{DATASET} WHERE cmpNpdidCompany = 2367 AND fldOperatorFrom = '1986-01-01'"
-    ).fetchone()
-    assert md5s == (1, 3)
+        "SELECT fldOperatorFrom, count(DISTINCT ___Std_md5), count(DISTINCT datesyncNPD), "
+        f"count(DISTINCT fldOperatorDateUpdated) FROM hook.std_views.no_sodir_{DATASET} "
+        "WHERE cmpNpdidCompany = 2367 GROUP BY 1 ORDER BY 1"
+    ).fetchall()
+    assert md5s == [(date(1986, 1, 1), 1, 3, 1), (date(2000, 1, 1), 1, 3, 2)]
 
 
 def test_full_replays_files_oldest_first(con):
     assert st.load(con, DATASET, "full") == 8
     assert changes(con, O1) == [("Equinor", date(2007, 1, 1), False), ("Norsk Hydro", date(1986, 1, 1), False),
                                 ("Norsk Hydro", date(2000, 1, 1), False), ("Saga", date(1988, 1, 1), False)]
-    # the export date alone makes no row; changed, deleted and new do
+    # the export and update dates alone make no row; changed, deleted and new do
     assert changes(con, O2) == [("Aker", date(2026, 2, 1), False), ("Equinor", date(2007, 1, 1), False),
                                 ("Saga", date(1988, 1, 1), True)]
     assert changes(con, O3) == [("Saga", date(1988, 1, 1), False)]
@@ -187,10 +192,11 @@ def test_url_is_the_field_operator_report():
 
 @pytest.mark.parametrize("rows, synced, new", [
     (SNAPSHOTS[O1][0], "05.01.2026", False),                         # only the export date moved
+    ([HYDRO_1, HYDRO_2_REDATED, EQUINOR, SAGA], "05.01.2026", False),  # and an update date
     (SNAPSHOTS[O2][0], "01.01.2026", True),                          # operators changed
     (SNAPSHOTS[O1][0][:3], "01.01.2026", True),                      # a row removed
 ])
-def test_is_new_content_ignores_the_export_date(monkeypatch, tmp_path, rows, synced, new):
+def test_is_new_content_ignores_the_export_and_update_dates(monkeypatch, tmp_path, rows, synced, new):
     monkeypatch.setattr(base, "read_watermark", lambda s, d: {"raw_file": "prev"})
     monkeypatch.setattr(base.s3, "get_bytes", lambda key: csv_bytes(*SNAPSHOTS[O1]))
     scraper = NoSodirFieldOperatorHst(client=None)

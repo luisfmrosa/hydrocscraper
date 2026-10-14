@@ -3,9 +3,9 @@
 -- Loaded by sql/lake/no_sodir/field_operator_hst_{full,incremental}.sql.
 --
 -- Data columns: same names, order and types as the std view
--- hook.std_views.no_sodir_field_operator_hst. A change of datesyncNPD alone makes no new row
--- (not in the MD5): each row keeps the values of the file it was observed
--- in. Lake metadata columns:
+-- hook.std_views.no_sodir_field_operator_hst. A change of
+-- fldOperatorDateUpdated or datesyncNPD alone makes no new row (not in the
+-- MD5): each row keeps the values of the file it was observed in. Lake metadata columns:
 --   ___Lake_md5             MD5 of the non-key columns (the std view's ___Std_md5)
 --   ___Lake_load_timestamp  when the change was observed: the source file's
 --                           download time (UTC), not the insert time

@@ -6,8 +6,11 @@
 -- same names and order as the Lake table. Then the Std metadata columns:
 --   ___Std_md5             MD5 of the non-key columns, in this order, joined
 --                          with chr(31); NULL becomes ''. Leaves out
---                          datesyncNPD: Sodir moves it with every export, so it
---                          would make a new version of every row each day
+--                          datesyncNPD (Sodir moves it with every export) and
+--                          fldOperatorDateUpdated (Sodir also moves it in bulk
+--                          refreshes, e.g. 560 of 580 rows on 20.02.2026):
+--                          only a change of the field's operators makes a
+--                          new version
 --   ___Std_filename        full S3 path of the Std file
 --   ___Std_year_month      year_month partition (the Raw file's)
 --   ___Std_file_timestamp  download time (UTC) of the Raw file, from the
@@ -29,8 +32,7 @@ SELECT
     md5(concat_ws(chr(31),
         coalesce(fldName::VARCHAR, ''),
         coalesce(cmpLongName::VARCHAR, ''),
-        coalesce(fldOperatorTo::VARCHAR, ''),
-        coalesce(fldOperatorDateUpdated::VARCHAR, '')
+        coalesce(fldOperatorTo::VARCHAR, '')
     ))                                              AS ___Std_md5,
     filename                                        AS ___Std_filename,
     year_month::VARCHAR                             AS ___Std_year_month,

@@ -11,9 +11,10 @@ Licence: NLOD (Norwegian Licence for Open Government Data)
 
 Downloaded by the shared Sodir table view scraper (scrapers/no_sodir/
 _tableview.py): one snapshot CSV per download. datesyncNPD (export date)
-changes on every export, so incremental mode compares the content without it,
-and the Std view's MD5 leaves it out
-(sql/ddl/std_views/025_no_sodir_field_operator_hst.sql).
+changes on every export and fldOperatorDateUpdated in Sodir's bulk refreshes,
+so incremental mode compares the content without them, and the Std view's MD5
+leaves them out (sql/ddl/std_views/025_no_sodir_field_operator_hst.sql): only
+a change of the field's operators makes a new version.
 
 CSV columns (English locale):
   fldName                 — field name
@@ -37,4 +38,4 @@ from scrapers.no_sodir._tableview import SodirTableView
 class NoSodirFieldOperatorHst(SodirTableView):
     dataset = "field_operator_hst"
     label = "field operators"
-    volatile_columns = ("datesyncNPD",)
+    volatile_columns = ("fldOperatorDateUpdated", "datesyncNPD")
