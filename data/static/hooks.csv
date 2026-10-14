@@ -6,3 +6,5 @@ id,business_concept_id,dataset_id,hook_expression_dev,hook_expression_prod,hook_
 5,2,4,cmpLongName,cmpNpdidCompany,integer,
 6,1,4,fldName,fldNpdidField,integer,
 7,1,5,fldName,fldNpdidField,integer,
+8,1,6,fldName,fldNpdidField,integer,
+9,2,6,cmpLongName,cmpNpdidCompany,integer,Operator

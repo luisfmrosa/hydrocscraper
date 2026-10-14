@@ -4,3 +4,4 @@ id,code,name,source_id,copyright,type,format,parent_code,granularity,periodicity
 3,no_sodir_company,Sodir companies,8,No,FILE,CSV,,company,snapshot,cmpNpdidCompany,https://factpages.sodir.no/en/company/TableView/All
 4,no_sodir_company_reserves,Sodir company reserves,8,No,FILE,CSV,,field,snapshot,"fldNpdidField, cmpNpdidCompany",https://factpages.sodir.no/en/company/TableView/Reserves
 5,no_sodir_field_description,Sodir field descriptions,8,No,FILE,CSV,,field,snapshot,"fldNpdidField, fldDescriptionHeading",https://factpages.sodir.no/en/field/TableView/Description
+6,no_sodir_field_operator_hst,Sodir field operators,8,No,FILE,CSV,,field,snapshot,"fldNpdidField, cmpNpdidCompany, fldOperatorFrom",https://factpages.sodir.no/en/field/TableView/Operators

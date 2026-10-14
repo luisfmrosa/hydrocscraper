@@ -47,7 +47,8 @@ def test_hooks_derive_key_sets(static, tmp_path):
     # dataset 1 is Sodir (source 8), business concept 1 is field, in business
     # domain 1 (sup); dataset 2 (Sodir fields) shares the key set and its encoding,
     # and also hooks business concept 2 (cmp, same domain) as the field's operator
-    # role; dataset 4 (company reserves) hooks both concepts without a role
+    # role; dataset 4 (company reserves) hooks both concepts without a role;
+    # dataset 6 (field operators) hooks the field and the operator role
     assert rows == [
         (1, 1, 1, "prfInformationCarrier", "prfNpdidInformationCarrier", "integer", None,
          "no_sodir.sup.field", b"\x08\x01\x01", "HK_FIELD"),
@@ -63,6 +64,10 @@ def test_hooks_derive_key_sets(static, tmp_path):
          "no_sodir.sup.field", b"\x08\x01\x01", "HK_FIELD"),
         (7, 1, 5, "fldName", "fldNpdidField", "integer", None,
          "no_sodir.sup.field", b"\x08\x01\x01", "HK_FIELD"),
+        (8, 1, 6, "fldName", "fldNpdidField", "integer", None,
+         "no_sodir.sup.field", b"\x08\x01\x01", "HK_FIELD"),
+        (9, 2, 6, "cmpLongName", "cmpNpdidCompany", "integer", "Operator",
+         "no_sodir.sup.cmp", b"\x08\x01\x02", "HK_COMPANY__Operator"),
     ]
 
 
