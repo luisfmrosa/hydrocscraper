@@ -27,12 +27,11 @@ layers: [raw, std, lake, library, dwh, hook]
 ducklake_layers: [lake, library, dwh, hook]
 
 postgres_version: 15
-# DuckDB 2.0 alpha build for the quack server, installed with
-# https://install.duckdb.org (DUCKDB_STAGED=<commit>/<version>). It must be the
-# exact build of `duckdb==` in requirements.txt: different dev builds cannot
-# talk to each other over quack. Needs an AVX2 CPU (the homelab J5005 has none).
-duckdb_staged: "ca15f79c32/v2.0.0-alpha43385"
-duckdb_cli: "/opt/duckdb/.duckdb/cli/{{ duckdb_staged.split('/')[1] | regex_replace('^v', '') }}/duckdb"
+# DuckDB release for the quack server, installed with https://install.duckdb.org
+# (DUCKDB_VERSION). It must be the same version as `duckdb==` in
+# requirements.txt: the app talks to the server over quack.
+duckdb_version: "2.0.0"
+duckdb_cli: "/opt/duckdb/.duckdb/cli/{{ duckdb_version }}/duckdb"
 
 # app_repo and app_version (branch/tag, default main) are set in local.yml
 app_dir: /opt/hydrocscraper

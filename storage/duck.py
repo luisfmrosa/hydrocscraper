@@ -6,14 +6,15 @@ DuckLakes; this app holds no catalog credentials. The connection runs
 `CONNECT 'quack:<host>:<port>'` (DuckDB 2.0), after which every statement
 executes on the server and can use fully qualified names (hook.metadata.x).
 
-Caveats (DuckDB 2.0.0-dev):
+Caveats (DuckDB 2.0):
 - Use execute(); the relational API (con.sql) binds names on the client.
 - Bound parameters (?) are not forwarded to the server: render values with
   literal().
-- Client and server must run the exact same DuckDB build.
-- Dev builds need an AVX2 CPU.
-- CONNECT uses HTTPS for any non-localhost host; the server only speaks plain
-  HTTP, so set HYDROC_QUACK_DISABLE_SSL=true -> CONNECT '...' (DISABLE_SSL true).
+- Client and server must run the same DuckDB version.
+- DuckDB 2.0 needs an AVX2 CPU.
+- CONNECT uses HTTPS for any non-localhost host; the server is started with
+  plain HTTP (disable_ssl in sql/ddl/99_serve.sql), so set
+  HYDROC_QUACK_DISABLE_SSL=true -> CONNECT '...' (DISABLE_SSL true).
 """
 
 from __future__ import annotations

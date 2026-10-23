@@ -5,13 +5,12 @@
     home: /opt/duckdb
     shell: /usr/sbin/nologin
 
-# Official install script, pinned to one staged build (DUCKDB_VERSION=alpha
-# would follow the latest alpha and break compatibility with the app).
+# Official install script, pinned to one release (the app's version).
 # Installs to $HOME/.duckdb/cli/<version>/duckdb.
-- name: Install DuckDB CLI {{ duckdb_staged }}
+- name: Install DuckDB CLI {{ duckdb_version }}
   ansible.builtin.shell: >-
     curl -fsSL https://install.duckdb.org |
-    HOME=/opt/duckdb DUCKDB_STAGED={{ duckdb_staged }} sh
+    HOME=/opt/duckdb DUCKDB_VERSION={{ duckdb_version }} sh
   args:
     creates: "{{ duckdb_cli }}"
   notify: Restart duckdb-quack

@@ -22,6 +22,13 @@ def static(tmp_path):
     return folder
 
 
+def append_row(path, row):
+    """Append a row with the file's own line ending: DuckDB's CSV sniffer
+    rejects a file that mixes CRLF (a Windows checkout) and LF."""
+    data = path.read_bytes()
+    path.write_bytes(data + row.encode("utf-8") + (b"\r\n" if b"\r\n" in data else b"\n"))
+
+
 def load(static, tmp_path):
     bucket = tmp_path / "raw"
     for name in NAMES:
@@ -153,8 +160,7 @@ def test_one_hook_per_role(static, tmp_path):
 
 
 def test_hook_column_replaces_other_characters(static, tmp_path):
-    with (static / "business_concepts.csv").open("a", encoding="utf-8") as fh:
-        fh.write("3,ogf,Oil & gas field,x,1\n")
+    append_row(static / "business_concepts.csv", "3,ogf,Oil & gas field,x,1")
     (static / "hooks.csv").write_text(HEADER + "1,3,2,a,b,integer,Main2\n", encoding="utf-8")
     con = load(static, tmp_path)
     assert con.execute("SELECT hook_column FROM hook.metadata.hooks").fetchone()[0] == "HK_OIL___GAS_FIELD__Main2"
@@ -182,8 +188,7 @@ def test_invalid_hooks_fail(static, tmp_path, hooks, error):
 
 
 def test_ids_above_one_byte_fail(static, tmp_path):
-    with (static / "business_concepts.csv").open("a", encoding="utf-8") as fh:
-        fh.write("256,big,Big,Too large for one byte,1\n")
+    append_row(static / "business_concepts.csv", "256,big,Big,Too large for one byte,1")
     (static / "hooks.csv").write_text(HEADER + "1,256,1,a,b,integer,\n", encoding="utf-8")
     with pytest.raises(duckdb.Error, match="must fit in one byte"):
         load(static, tmp_path)

@@ -281,15 +281,15 @@ std_views/*.sql                  -- hook.std_views.* over s3://hydroc-std/...
 
 To add an object, add an idempotent script and a `.read` line to `init_server.sql`, then re-run Ansible (Incus) or `docker compose restart duckdb` (Docker), which restarts the server.
 
-The app talks to the server through `storage/duck.py`. It runs `CONNECT 'quack:<host>:9494' (DISABLE_SSL true)`, after which every statement executes on the server and can use fully qualified names such as `hook.metadata.watermark`. Behaviour of quack in DuckDB 2.0.0-dev to keep in mind:
+The app talks to the server through `storage/duck.py`. It runs `CONNECT 'quack:<host>:9494' (DISABLE_SSL true)`, after which every statement executes on the server and can use fully qualified names such as `hook.metadata.watermark`. Behaviour of quack in DuckDB 2.0 to keep in mind:
 
 - **`quack_serve` returns immediately.** The CLI would exit at the end of the init file, so the systemd unit (and the Docker entrypoint) keeps its stdin open.
-- **Same build on both sides.** Different 2.0 dev builds can't talk to each other; the server answers with HTTP 500. `duckdb==` in `requirements.txt` and the server's staged build must match: `duckdb_staged` in Ansible (Incus) and `DUCKDB_STAGED` in `architecture/docker/duckdb/Dockerfile`. Both install the CLI with the official script (`https://install.duckdb.org`) pinned via `DUCKDB_STAGED=<commit>/<version>`; don't use `DUCKDB_VERSION=alpha`, which always fetches the newest alpha.
-- **AVX2 CPU required.** The 2.0 dev builds (wheel and CLI) crash with `Illegal instruction` on CPUs without AVX2. The homelab Incus server (Intel Pentium Silver J5005) has none, so the Incus stack can't run there until an official 2.0 release supports older CPUs. The Docker stack runs on any AVX2 machine.
-- **HTTPS by default.** `CONNECT` uses HTTPS for any host other than localhost, but the server only speaks HTTP. `HYDROC_QUACK_DISABLE_SSL=true` adds `(DISABLE_SSL true)`.
+- **Same version on both sides.** `duckdb==` in `requirements.txt` and the server's CLI must be the same version (2.0.0): `duckdb_version` in Ansible (Incus) and `DUCKDB_VERSION` in `architecture/docker/duckdb/Dockerfile`. Both install the CLI with the official script (`https://install.duckdb.org`). Upgrade all three together: the server's catalogs may need a one-time DuckLake migration (attach once with `AUTOMATIC_MIGRATION TRUE`; `10_attach.sql` deliberately doesn't, so a format change fails loudly at startup).
+- **AVX2 CPU required.** DuckDB 2.0 (wheel and CLI, release 2.0.0 included) crashes with `Illegal instruction` on CPUs without AVX2; 1.5 doesn't. The homelab Incus server (Intel Pentium Silver J5005) has none, so the Incus stack can't run there. The Docker stack runs on any AVX2 machine.
+- **HTTPS by default.** Since 2.0.0, `quack_serve` serves HTTPS (self-signed certificate) on any address but localhost, and `CONNECT` uses HTTPS for any host but localhost. We keep plain HTTP on both sides: `99_serve.sql` passes `disable_ssl = true`, and `HYDROC_QUACK_DISABLE_SSL=true` adds `(DISABLE_SSL true)` to `CONNECT`.
 - **Use `execute()`.** In Python, `con.sql()` resolves table names on the client and fails after `CONNECT`. `con.execute()` sends the statement to the server.
 - **No bound parameters.** `?` values are not forwarded to the server, so values are rendered as SQL literals (`duck.literal`).
-- **No TLS.** The listener speaks plain HTTP. Port 9494 stays on the private bridge; OpenTofu can publish it with `expose_quack_port`, but only do that behind a TLS proxy.
+- **No TLS.** The listener speaks plain HTTP (see above). Port 9494 stays on the private bridge; OpenTofu can publish it with `expose_quack_port`, but only do that behind a TLS proxy.
 - **Localhost only by default.** `quack_serve` refuses a non-localhost address unless `allow_other_hostname = true` (set in `99_serve.sql`). If it fails, the CLI stays alive and the unit still reports `active`, so check the port (`ss -ltn | grep 9494`). Ansible does this with `wait_for`.
 
 ---

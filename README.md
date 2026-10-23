@@ -55,7 +55,7 @@ The stack runs on Incus: three containers (Postgres, a DuckDB quack server and t
 
 ## Deployment
 
-The stack can run in two setups, each in its own folder under `architecture/`. Both use the same code and the same `sql/ddl` scripts. DuckDB 2.0.0-dev needs a CPU with AVX2 in either setup.
+The stack can run in two setups, each in its own folder under `architecture/`. Both use the same code and the same `sql/ddl` scripts. DuckDB 2.0 needs a CPU with AVX2 in either setup.
 
 ### Docker (local / test)
 

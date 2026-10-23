@@ -12,7 +12,7 @@ The same stack as the Incus setup, in Docker Compose. RustFS provides the S3 API
 
 All ports are bound to `127.0.0.1` only. Data lives in named volumes (`rustfs-data`, `pg-data`).
 
-**Requirements:** Docker with Compose v2, and a CPU with AVX2. The DuckDB 2.0 dev builds crash without AVX2.
+**Requirements:** Docker with Compose v2, and a CPU with AVX2. DuckDB 2.0 crashes without AVX2.
 
 ## Start
 
@@ -64,4 +64,4 @@ docker compose down -v     # also delete buckets and catalogs
 - **S3 transport:** plain HTTP inside the Compose network (`USE_SSL false`), so no certificate handling is needed.
 - **Server secrets:** `duckdb/entrypoint.sh` writes `secrets.sql` from environment variables at start; Incus uses an Ansible template.
 - **Catalog setup:** `postgres/init-catalogs.sh` creates the catalog databases, but only when the data volume is empty. After changing their passwords in `.env`, run `docker compose down -v`.
-- **DuckDB build:** pinned with `DUCKDB_STAGED` in `duckdb/Dockerfile`. It must be the exact build of `duckdb==` in `requirements.txt`.
+- **DuckDB version:** pinned with `DUCKDB_VERSION` in `duckdb/Dockerfile`. It must be the same version as `duckdb==` in `requirements.txt`.

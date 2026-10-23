@@ -55,7 +55,7 @@ def test_watermark_roundtrip(con):
     write_watermark("no_sodir", "ds", execute=ex, load_mode="incremental",
                     last_period_fetched="2026-08", status="ok", raw_file="k'2")
 
-    assert con.sql("SELECT count(*) FROM hook.metadata.watermark").fetchone()[0] == 2
+    assert con.execute("SELECT count(*) FROM hook.metadata.watermark").fetchone()[0] == 2
     wm = read_watermark("no_sodir", "ds", execute=ex)
     assert wm["last_period_fetched"] == "2026-08"
     assert wm["raw_file"] == "k'2"
