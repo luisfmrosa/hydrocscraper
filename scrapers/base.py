@@ -50,7 +50,7 @@ import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from storage import datasets, lake, s3, std
+from storage import datasets, lake, s3, serve, std
 from storage.raw import upload_raw
 from storage.watermark import DONE, read_watermark, write_watermark
 from utils.http import download_file as _download_file
@@ -105,6 +105,12 @@ class BaseScraper(ABC):
         self._finish_pending()
         if self.download_incremental():
             self._finish_pending()
+
+    def serve_load(self) -> None:
+        """Refresh the serving copies of every table from the Library, with
+        no download or Lake load (storage/serve.py)."""
+        for table in self.tables:
+            serve.refresh(self.source, table)
 
     def _finish_pending(self) -> None:
         """Run the steps the latest watermark's file is still missing."""

@@ -11,6 +11,10 @@ output "quack_port" {
   value = var.quack_port
 }
 
+output "metabase_port" {
+  value = var.metabase_port
+}
+
 output "bucket_keys" {
   description = "Per-layer S3 credentials, keyed by layer."
   sensitive   = true

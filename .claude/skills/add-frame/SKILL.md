@@ -95,6 +95,8 @@ Header comment: both view names, the source Lake table, the business key, the mo
 
 Add `.read library/<code>[_dev].sql` to `sql/ddl/init_server.sql`, under `-- Library frame and latest views`. At server start it fails harmlessly while the Lake table doesn't exist; `storage/lake.py` re-runs it after every Lake load of the table (it finds `<code>.sql` and `<code>_dev.sql` by name), so no restart is needed.
 
+Then serve the latest views to Metabase: add `sql/serve/<source>/<table>.sql` (copy `sql/serve/no_sodir/field.sql`), listing the production view and then the development view, for each mode that exists. `storage/serve.py` runs it after every Lake load, and `tests/test_serve.py` fails for a Library table without one (see `docs/metabase.md`).
+
 ## 5. Verify
 
 1. **Tests:** like `tests/test_library.py` (it reuses the Lake fixtures of `tests/test_lake.py`): versions and effective ranges, a key deleted and back, a key deleted last, one open version per key, hook values, `latest` columns and rows, and the same results under a non-UTC session time zone. Run `pytest` in the app container (`docker compose run --rm --no-deps app sh -c "pip install -q pytest && python -m pytest -q"`).

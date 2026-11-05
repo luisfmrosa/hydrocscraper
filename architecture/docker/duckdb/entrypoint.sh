@@ -24,6 +24,9 @@ umask 077
         echo "CREATE SECRET pg_${layer} (TYPE postgres, HOST '${PG_HOST}', PORT 5432, DATABASE 'cat_hydroc_${layer}', USER 'user_hydroc_${layer}', PASSWORD '${password}');"
         echo "CREATE SECRET ducklake_${layer} (TYPE ducklake, METADATA_PATH '', DATA_PATH 's3://hydroc-${layer}/', METADATA_PARAMETERS MAP {'TYPE': 'postgres', 'SECRET': 'pg_${layer}'});"
     done
+
+    # Serving database for Metabase (plain Postgres, attached as serve in 10_attach.sql)
+    echo "CREATE SECRET pg_serve (TYPE postgres, HOST '${PG_HOST}', PORT 5432, DATABASE 'hydroc_serve', USER 'user_hydroc_serve', PASSWORD '${PG_PASSWORD_SERVE:?}');"
 } > /opt/duckdb/secrets.sql
 
 # quack_serve() returns immediately; an open stdin keeps the CLI running.

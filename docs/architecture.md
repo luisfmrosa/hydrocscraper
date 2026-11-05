@@ -35,6 +35,7 @@ The same stack can be deployed two ways (see *Infrastructure* below): on an Incu
 | `hydroc-app` | Runs the scrapers (`main.py`). It uploads raw files to `hydroc-raw` and runs the Std and Lake SQL and the metadata reads and writes through the quack server. It holds no catalog credentials and needs no access to `hydroc-std`. |
 | `hydroc-duckdb` | DuckDB CLI server. It attaches the four DuckLakes, applies the DDL in `sql/ddl/` at startup and serves the quack protocol. |
 | `hydroc-pg` | PostgreSQL. It holds one DuckLake catalog database per layer: `cat_hydroc_<layer>`, owned by `user_hydroc_<layer>`. |
+| `hydroc-metabase` | Metabase, the serving layer: dashboards over copies of the Library latest views in Postgres `hydroc_serve` (see [metabase.md](metabase.md)). |
 | S3 buckets | One bucket per layer, `hydroc-<layer>`. Incus storage buckets (one key per bucket) or RustFS in Docker (one root key). |
 
 ---
@@ -48,6 +49,7 @@ The same stack can be deployed two ways (see *Infrastructure* below): on an Incu
 | **Lake** | DuckLake `lake`, one schema per source | Append-only change records per Std table, e.g. `lake.no_sodir.field_production_monthly` (see *Lake tables*) |
 | **Library** | DuckLake `library`, schemas `frame` and `latest` | SCD2 frame views over one Lake table each, with the hook columns, and latest-version views, e.g. `library.frame.no_sodir_field_production_monthly_dev` (see *Library views*) |
 | **DWH** | DuckLake `dwh`, schema `supply` | Business views and models |
+| **Serve** | Postgres database `hydroc_serve`, schema `latest` (not a DuckLake) | Copies of the Library latest views for Metabase, e.g. `hydroc_serve.latest.no_sodir_field_production_monthly`, replaced after every Lake load (see [metabase.md](metabase.md)) |
 | **Hook** | DuckLake `hook`, schemas `metadata`, `raw_views` and `std_views` | `metadata`: `sources`, `datasets`, `business_domains`, `business_concepts`, `hooks` (static, from `data/static/`) and `watermark`. `raw_views`: one view per dataset over its Raw files. `std_views`: one view per Std table over its Parquet files |
 
 Every layer has its own bucket, `hydroc-<layer>`. Raw and Std are plain buckets of files; the other four are DuckLakes, each with its data in its own bucket and its catalog in its own Postgres database (`cat_hydroc_<layer>`) owned by its own user (`user_hydroc_<layer>`), all on the same Postgres instance. Separate catalogs and users leave room to segregate access per layer later.
@@ -259,7 +261,7 @@ Production encodings, unsigned and big-endian so the hex reads like the number (
 
 **Open end: `infinity`, not `9999-12-31`.** A `TIMESTAMPTZ` literal without an offset is read in the session's time zone, so `TIMESTAMPTZ '9999-12-31'` is a different moment on the server (UTC) and on a client in another zone, and a client's `WHERE ___Effective_To = TIMESTAMPTZ '9999-12-31'` would match nothing. `infinity` has no time zone: query open versions with `___Effective_To = 'infinity'::TIMESTAMPTZ` or `NOT isfinite(___Effective_To)`. Outside SQL it renders oddly (Python `datetime(9999, 12, 31, 23, 59, 59, 999999)` without a zone, pandas `294247-01-10 …`).
 
-The views read the Lake across catalogs (`lake.<source>.<table>` from the `library` DuckLake), which works because every catalog is attached under a fixed alias. A view fails at server start while its Lake table doesn't exist; `storage/lake.py` re-runs the table's Library scripts after every Lake load.
+The views read the Lake across catalogs (`lake.<source>.<table>` from the `library` DuckLake), which works because every catalog is attached under a fixed alias. A view fails at server start while its Lake table doesn't exist; `storage/lake.py` re-runs the table's Library scripts after every Lake load, then `storage/serve.py` copies the latest views into the serving database (`sql/serve/<source>/<table>.sql`, see [metabase.md](metabase.md)).
 
 ---
 
@@ -320,8 +322,8 @@ Each setup lives in its own folder under `architecture/` and runs the same appli
 
 | Folder | Tool | Manages |
 |--------|------|---------|
-| `architecture/incus/tofu/` | OpenTofu + `lxc/incus` | Bridge `hydroc-br0`, project `hydroc`, profile, 6 buckets and their keys, 3 containers |
-| `architecture/incus/ansible/` | Ansible, `community.general.incus` connection | Postgres catalogs and users, DuckDB server and its systemd unit, app venv and `.env` |
+| `architecture/incus/tofu/` | OpenTofu + `lxc/incus` | Bridge `hydroc-br0`, project `hydroc`, profile, 6 buckets and their keys, 4 containers (Metabase published on host port 3000) |
+| `architecture/incus/ansible/` | Ansible, `community.general.incus` connection | Postgres catalogs, serving databases and users, DuckDB server and its systemd unit, app venv and `.env`, Metabase and its dashboard |
 
 Ansible reads the bucket keys from `tofu output -json`, and the passwords and quack token from `group_vars/all/vault.yml`. The OpenTofu state, `*.tfvars`, `vault.yml` and `.env` are all git-ignored.
 
@@ -333,7 +335,7 @@ Ansible reads the bucket keys from `tofu output -json`, and the passwords and qu
 
 ### Docker (`architecture/docker/`)
 
-`compose.yaml` runs `rustfs` (S3 API with a web console), a one-shot `rustfs-init` that creates the buckets, `postgres` (catalog databases created by `postgres/init-catalogs.sh`), `duckdb` (the pinned 2.0 CLI, which mounts `sql/ddl` and renders `secrets.sql` from the environment in `entrypoint.sh`) and `app` (run on demand). Credentials come from `architecture/docker/.env`, which is git-ignored.
+`compose.yaml` runs `rustfs` (S3 API with a web console), a one-shot `rustfs-init` that creates the buckets, `postgres` (catalog databases created by `postgres/init-catalogs.sh`), `duckdb` (the pinned 2.0 CLI, which mounts `sql/ddl` and renders `secrets.sql` from the environment in `entrypoint.sh`) and `metabase` with a one-shot `metabase-init` that provisions its dashboard, and `app` (run on demand). Credentials come from `architecture/docker/.env`, which is git-ignored.
 
 ---
 
@@ -341,7 +343,7 @@ Ansible reads the bucket keys from `tofu output -json`, and the passwords and qu
 
 ```
 hydrocscraper/
-├── main.py                 # CLI: full | incremental, --datasets / --sources
+├── main.py                 # CLI: full | incremental | serve, --datasets / --sources
 ├── config.py               # Settings from .env, scraper registry
 ├── requirements.txt
 ├── .env.example
@@ -358,18 +360,21 @@ hydrocscraper/
 │   ├── std.py              # runs a dataset's Std SQL (Raw -> Std)
 │   ├── duck.py             # quack client
 │   ├── lake.py             # runs a table's Lake SQL (Std -> Lake), then its Library views
+│   ├── serve.py            # runs a table's serve SQL (Library -> Postgres hydroc_serve)
 │   └── watermark.py        # hook.metadata.watermark read/write
 ├── utils/
 │   └── http.py             # HTTP client, retries
 ├── sql/ddl/                # DuckDB server startup script and DDL (raw/std views, Lake tables)
 ├── sql/std/                # Std scripts (Raw -> Std), per source and dataset
 ├── sql/lake/               # Lake load scripts, per source and table
+├── sql/serve/              # serve scripts (Library latest -> hydroc_serve), per source and table
 ├── data/static/            # static Hook metadata (CSV)
 ├── architecture/
 │   ├── incus/
 │   │   ├── tofu/           # OpenTofu (Incus)
-│   │   └── ansible/        # Ansible roles: common, postgres, duckdb_server, app
-│   └── docker/             # Docker Compose stack (RustFS, Postgres, DuckDB, app)
+│   │   └── ansible/        # Ansible roles: common, postgres, duckdb_server, app, metabase
+│   ├── docker/             # Docker Compose stack (RustFS, Postgres, DuckDB, Metabase, app)
+│   └── metabase/           # provision.py: Metabase setup and the Sodir dashboard (both setups)
 ├── tests/                  # pytest
 └── docs/
 ```

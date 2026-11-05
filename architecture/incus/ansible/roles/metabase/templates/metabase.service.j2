@@ -1,0 +1,16 @@
+[Unit]
+Description=Metabase {{ metabase_version }} (hydroc serving layer)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=metabase
+WorkingDirectory={{ metabase_dir }}
+EnvironmentFile={{ metabase_dir }}/metabase.env
+ExecStart=/usr/bin/java -Duser.timezone=UTC -jar {{ metabase_dir }}/metabase-{{ metabase_version }}.jar
+Restart=on-failure
+RestartSec=10
+SuccessExitStatus=143
+
+[Install]
+WantedBy=multi-user.target

@@ -31,9 +31,10 @@ variable "instance_ips" {
   description = "Static IPv4 addresses of the containers."
   type        = map(string)
   default = {
-    "hydroc-pg"     = "10.10.40.10"
-    "hydroc-duckdb" = "10.10.40.20"
-    "hydroc-app"    = "10.10.40.30"
+    "hydroc-pg"       = "10.10.40.10"
+    "hydroc-duckdb"   = "10.10.40.20"
+    "hydroc-app"      = "10.10.40.30"
+    "hydroc-metabase" = "10.10.40.40"
   }
 }
 
@@ -71,4 +72,16 @@ variable "expose_quack_port" {
   description = "Host port to publish the quack server on (0 = not published)."
   type        = number
   default     = 0
+}
+
+variable "metabase_port" {
+  description = "Port of Metabase inside hydroc-metabase."
+  type        = number
+  default     = 3000
+}
+
+variable "expose_metabase_port" {
+  description = "Host port to publish Metabase on (0 = not published)."
+  type        = number
+  default     = 3000
 }
