@@ -55,6 +55,7 @@ The watermark's `raw_file` is the file the raw view reads (the conversion in cas
 6. **Lake table(s):** follow the `lake-table` skill, once per row with keys.
 7. **Lake loads:** follow the `lake-load-script` skill, once per row with keys.
 8. **Library frames** (optional; ask the user, and whether development or production): follow the `add-frame` skill, once per Lake table. It needs the dataset's hooks (`add-hook` skill, step 1).
+8b. **Serve script** (if frames were added): `sql/serve/<source>/<table>.sql`, copying the table's latest views into `serve.latest` for Metabase. Copy an existing one (production view, then development view; see `docs/metabase.md`).
 9. **Server registration:** `.read` lines for the raw view, each std view, each Lake table and each Library script in `sql/ddl/init_server.sql`.
 10. **Tests:** a unit test for the scraper's pure helpers (like `tests/test_no_sodir.py`) and a SQL test running the real raw view, Std script, std view and Lake scripts on a local DuckDB (like `tests/test_lake.py`), plus a Library test if frames were added (like `tests/test_library.py`). Then run `pytest` (in the app container: `docker compose run --rm --no-deps app sh -c "pip install -q pytest && python -m pytest -q"`).
 11. **Docker stack** (`architecture/docker`):

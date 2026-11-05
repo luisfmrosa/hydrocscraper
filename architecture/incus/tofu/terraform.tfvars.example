@@ -6,3 +6,5 @@ incus_remote      = "my-incus-remote"
 bucket_pool       = "naspool-buckets"
 network_cidr      = "10.10.40.1/24"
 expose_quack_port = 0
+# Host port Metabase is published on (0 = not published)
+expose_metabase_port = 3000

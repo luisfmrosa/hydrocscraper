@@ -7,6 +7,8 @@ table's scripts to the quack server, in order:
   3. sql/lake/<source>/<table>_<mode>.sql    load: full | incremental
   4. sql/ddl/library/<code>[_dev].sql        Library frame and latest views,
                                              if any (CREATE OR REPLACE)
+  5. sql/serve/<source>/<table>.sql          serving copies of the latest
+                                             views, if any (storage/serve.py)
 
 where <code> is <source>_<table> and <table> is the dataset or one of its
 flattened sub-tables (data/static/datasets.csv). Steps 1-2 and 4 also run at
@@ -19,7 +21,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from storage import scripts
+from storage import scripts, serve
 
 logger = logging.getLogger(__name__)
 
@@ -46,8 +48,8 @@ def library_scripts(source: str, table: str) -> list[Path]:
 
 
 def load(source: str, table: str, mode: str) -> int:
-    """Run a table's Lake load, then (re)create its Library views; return
-    the number of rows inserted."""
+    """Run a table's Lake load, then (re)create its Library views and refresh
+    its serving copies; return the number of rows inserted."""
     rows: list[tuple] = []
     for path in lake_scripts(source, table, mode):
         rows = scripts.run(path)
@@ -55,4 +57,5 @@ def load(source: str, table: str, mode: str) -> int:
     logger.info("lake.%s.%s: %s load inserted %d rows", source, table, mode, inserted)
     for path in library_scripts(source, table):
         scripts.run(path)
+    serve.refresh(source, table)
     return inserted

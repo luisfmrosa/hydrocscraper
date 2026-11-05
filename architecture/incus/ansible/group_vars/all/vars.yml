@@ -14,6 +14,7 @@ gateway_ip: "{{ tofu.gateway.value }}"
 instance_ips: "{{ tofu.instance_ips.value }}"
 bucket_keys: "{{ tofu.bucket_keys.value }}"
 quack_port: "{{ tofu.quack_port.value }}"
+metabase_port: "{{ tofu.metabase_port.value }}"
 
 # Incus bucket endpoint. Its TLS certificate is issued for the Incus host name
 # (incus_host_name, from local.yml), which is mapped to the bridge gateway
@@ -36,3 +37,10 @@ duckdb_cli: "/opt/duckdb/.duckdb/cli/{{ duckdb_staged.split('/')[1] | regex_repl
 
 # app_repo and app_version (branch/tag, default main) are set in local.yml
 app_dir: /opt/hydrocscraper
+
+# Metabase (hydroc-metabase): OSS jar from downloads.metabase.com, run by the
+# Temurin JRE from the Adoptium apt repository (the Java of the official image).
+# Keep in step with METABASE_VERSION in architecture/docker/compose.yaml.
+metabase_version: v0.65.3.3
+metabase_java_package: temurin-25-jre
+metabase_dir: /opt/metabase

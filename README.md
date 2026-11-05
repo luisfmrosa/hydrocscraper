@@ -112,6 +112,9 @@ python main.py --mode incremental
 # After changing a Std script (or to recover from a schema change): convert every Raw file again
 python main.py --mode full --rebuild-std --datasets no_sodir_field_production_monthly
 
+# Refresh only the Metabase copies of the Library (no download, no load)
+python main.py --mode serve
+
 # Verbose / debug logging
 python main.py --mode full -v
 ```
@@ -141,7 +144,7 @@ The idea is to keep expanding it. Here are some ideas:
 * use the project [changedetection.io](https://changedetection.io) locally to detect when a source changes and trigger the corresponding pipeline
 * implement all known datasets
 * create a unified analytical layer for oil supply (star schema?)
-* add a analytical serving layer (Metabase)[https://www.metabase.com/]?
+* ~~add an analytical serving layer ([Metabase](https://www.metabase.com/))~~ done: see [docs/metabase.md](docs/metabase.md)
 * reorganize the project to allow parallel agentic development
 
 ... and it's already a lot of things!

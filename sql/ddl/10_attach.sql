@@ -5,3 +5,9 @@ ATTACH IF NOT EXISTS 'ducklake:ducklake_lake' AS lake;
 ATTACH IF NOT EXISTS 'ducklake:ducklake_library' AS library;
 ATTACH IF NOT EXISTS 'ducklake:ducklake_dwh' AS dwh;
 ATTACH IF NOT EXISTS 'ducklake:ducklake_hook' AS hook;
+
+-- Serving database for Metabase: Postgres hydroc_serve (secret pg_serve from
+-- secrets.sql), not a DuckLake. sql/serve/ copies the Library latest views
+-- into its schema latest (storage/serve.py). The schema and Metabase's read
+-- access are created with the database (Postgres init), not here.
+ATTACH IF NOT EXISTS '' AS serve (TYPE postgres, SECRET pg_serve);

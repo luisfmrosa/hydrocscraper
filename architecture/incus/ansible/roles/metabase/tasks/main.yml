@@ -1,0 +1,88 @@
+- name: Add the Adoptium (Temurin) apt key
+  ansible.builtin.get_url:
+    url: https://packages.adoptium.net/artifactory/api/gpg/key/public
+    dest: /etc/apt/keyrings/adoptium.asc
+    mode: "0644"
+
+- name: Add the Adoptium apt repository
+  ansible.builtin.apt_repository:
+    repo: >-
+      deb [signed-by=/etc/apt/keyrings/adoptium.asc]
+      https://packages.adoptium.net/artifactory/deb {{ ansible_distribution_release }} main
+    filename: adoptium
+
+- name: Install Java ({{ metabase_java_package }})
+  ansible.builtin.apt:
+    name: "{{ metabase_java_package }}"
+  notify: Restart metabase
+
+- name: Create metabase user
+  ansible.builtin.user:
+    name: metabase
+    system: true
+    home: "{{ metabase_dir }}"
+    shell: /usr/sbin/nologin
+
+# One jar per version, so changing metabase_version downloads the new one
+- name: Download Metabase {{ metabase_version }}
+  ansible.builtin.get_url:
+    url: https://downloads.metabase.com/{{ metabase_version }}/metabase.jar
+    dest: "{{ metabase_dir }}/metabase-{{ metabase_version }}.jar"
+    owner: metabase
+    mode: "0644"
+  notify: Restart metabase
+
+- name: Render environment (application database credentials)
+  ansible.builtin.template:
+    src: metabase.env.j2
+    dest: "{{ metabase_dir }}/metabase.env"
+    owner: metabase
+    mode: "0600"
+  no_log: true
+  notify: Restart metabase
+
+- name: Install systemd unit
+  ansible.builtin.template:
+    src: metabase.service.j2
+    dest: /etc/systemd/system/metabase.service
+    mode: "0644"
+  notify: Restart metabase
+
+- name: Enable metabase
+  ansible.builtin.systemd:
+    name: metabase
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Apply pending restarts
+  ansible.builtin.meta: flush_handlers
+
+# The first start migrates the application database: allow a few minutes
+- name: Wait for Metabase to be healthy
+  ansible.builtin.uri:
+    url: http://127.0.0.1:{{ metabase_port }}/api/health
+  register: health
+  until: health.status == 200
+  retries: 60
+  delay: 5
+
+- name: Copy the provisioning script
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../metabase/provision.py"
+    dest: "{{ metabase_dir }}/provision.py"
+    owner: metabase
+    mode: "0644"
+
+# Idempotent: admin user, the hydroc_serve connection, the Sodir dashboard
+- name: Provision Metabase (admin, database, dashboard)
+  ansible.builtin.command: python3 -I {{ metabase_dir }}/provision.py
+  environment:
+    MB_URL: http://127.0.0.1:{{ metabase_port }}
+    MB_ADMIN_EMAIL: "{{ vault_metabase_admin_email }}"
+    MB_ADMIN_PASSWORD: "{{ vault_metabase_admin_password }}"
+    SERVE_HOST: "{{ instance_ips['hydroc-pg'] }}"
+    SERVE_PASSWORD: "{{ vault_pg_passwords.metabase }}"
+  register: provision
+  changed_when: "'setup done' in provision.stdout or 'added' in provision.stdout"
+  no_log: true

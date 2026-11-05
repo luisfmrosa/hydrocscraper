@@ -1,9 +1,12 @@
-# hydrocscraper stack on Docker: RustFS (S3), Postgres (DuckLake catalogs),
-# DuckDB quack server and the app. Settings and credentials: .env (see .env.example).
+# hydrocscraper stack on Docker: RustFS (S3), Postgres (DuckLake catalogs and
+# the serving database), DuckDB quack server, Metabase and the app. Settings and credentials: .env (see .env.example).
 #
 #   docker compose up -d --build                                  # start the stack
 #   docker compose run --rm app python main.py --mode full        # run the app
 #   docker compose down                                           # stop (add -v to wipe data)
+#
+# Metabase: http://127.0.0.1:3000 (admin: MB_ADMIN_EMAIL / MB_ADMIN_PASSWORD).
+# metabase-init connects it to hydroc_serve and creates the Sodir dashboard.
 
 name: hydroc
 
@@ -57,10 +60,15 @@ services:
       PG_PASSWORD_LIBRARY: ${PG_PASSWORD_LIBRARY:?set PG_PASSWORD_LIBRARY in .env}
       PG_PASSWORD_DWH: ${PG_PASSWORD_DWH:?set PG_PASSWORD_DWH in .env}
       PG_PASSWORD_HOOK: ${PG_PASSWORD_HOOK:?set PG_PASSWORD_HOOK in .env}
+      PG_PASSWORD_SERVE: ${PG_PASSWORD_SERVE:?set PG_PASSWORD_SERVE in .env}
+      PG_PASSWORD_METABASE: ${PG_PASSWORD_METABASE:?set PG_PASSWORD_METABASE in .env}
     volumes:
       - pg-data:/var/lib/postgresql/data
-      # Runs on first start only (empty data volume)
+      # Run on first start only (empty data volume). 20-serve.sh is idempotent:
+      # on an older volume, run it once with `docker compose exec postgres sh
+      # /docker-entrypoint-initdb.d/20-serve.sh`
       - ./postgres/init-catalogs.sh:/docker-entrypoint-initdb.d/10-catalogs.sh:ro
+      - ./postgres/init-serve.sh:/docker-entrypoint-initdb.d/20-serve.sh:ro
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "postgres"]
       interval: 5s
@@ -83,6 +91,7 @@ services:
       PG_PASSWORD_LIBRARY: ${PG_PASSWORD_LIBRARY}
       PG_PASSWORD_DWH: ${PG_PASSWORD_DWH}
       PG_PASSWORD_HOOK: ${PG_PASSWORD_HOOK}
+      PG_PASSWORD_SERVE: ${PG_PASSWORD_SERVE}
     volumes:
       - ../../sql/ddl:/opt/duckdb/ddl:ro          # same startup scripts as Incus
       - ../../data/static:/opt/duckdb/static:ro   # static Hook metadata (45_hook_static.sql)
@@ -94,6 +103,50 @@ services:
       test: ["CMD", "curl", "-s", "-o", "/dev/null", "http://127.0.0.1:9494/"]
       interval: 5s
       retries: 30
+
+  # Serving layer: Metabase reads the Library copies in hydroc_serve (schema
+  # latest) through its built-in Postgres driver; its own application data
+  # lives in the Postgres database metabase.
+  metabase:
+    image: metabase/metabase:${METABASE_VERSION:-v0.65.3.3}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      MB_DB_TYPE: postgres
+      MB_DB_HOST: postgres
+      MB_DB_PORT: "5432"
+      MB_DB_DBNAME: metabase
+      MB_DB_USER: user_metabase
+      MB_DB_PASS: ${PG_PASSWORD_METABASE}
+      MB_SITE_URL: ${MB_SITE_URL:-http://127.0.0.1:3000}
+      MB_ANON_TRACKING_ENABLED: "false"
+      MB_CHECK_FOR_UPDATES: "false"
+      JAVA_TIMEZONE: UTC
+    ports:
+      - "127.0.0.1:3000:3000"
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://127.0.0.1:3000/api/health"]
+      interval: 10s
+      start_period: 60s
+      retries: 30
+
+  # One-shot: first-run setup (admin user), the hydroc_serve connection and
+  # the Sodir dashboard (idempotent: re-running updates them in place).
+  metabase-init:
+    image: python:3.12-alpine
+    depends_on:
+      metabase:
+        condition: service_healthy
+    environment:
+      MB_URL: http://metabase:3000
+      MB_ADMIN_EMAIL: ${MB_ADMIN_EMAIL:?set MB_ADMIN_EMAIL in .env}
+      MB_ADMIN_PASSWORD: ${MB_ADMIN_PASSWORD:?set MB_ADMIN_PASSWORD in .env}
+      SERVE_HOST: postgres
+      SERVE_PASSWORD: ${PG_PASSWORD_METABASE}
+    volumes:
+      - ../metabase:/opt/metabase-setup:ro
+    command: ["python", "-I", "/opt/metabase-setup/provision.py"]
 
   # Not started by `up`; use `docker compose run --rm app python main.py ...`
   app:

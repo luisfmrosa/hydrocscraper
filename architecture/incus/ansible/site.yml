@@ -31,3 +31,7 @@
 - name: hydrocscraper app
   hosts: app
   roles: [app]
+
+- name: Metabase (serving layer)
+  hosts: metabase
+  roles: [metabase]

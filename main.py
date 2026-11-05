@@ -7,6 +7,7 @@ Usage:
     python main.py --mode full --sources no_sodir
     python main.py --mode incremental --datasets no_sodir_field_production_monthly
     python main.py --mode full --rebuild-std     # after changing a Std script
+    python main.py --mode serve                  # refresh the Metabase copies only
 
 DuckLake objects are created by the DuckDB server at startup (sql/ddl/);
 Lake tables are created by the app on first load.
@@ -65,10 +66,11 @@ def _load_scraper(code: str, client):
 @click.option(
     "--mode",
     required=True,
-    type=click.Choice(["full", "incremental"], case_sensitive=False),
+    type=click.Choice(["full", "incremental", "serve"], case_sensitive=False),
     help=(
         "full: download the complete dataset, then rebuild its Lake table. "
-        "incremental: download only new data, then append its changes to the Lake."
+        "incremental: download only new data, then append its changes to the Lake. "
+        "serve: only refresh the serving copies of the Library (Metabase)."
     ),
 )
 @click.option(
@@ -123,6 +125,8 @@ def main(
                     scraper.full_load(rebuild_std=rebuild_std)
                 elif mode == "incremental":
                     scraper.incremental_load()
+                elif mode == "serve":
+                    scraper.serve_load()
 
             except Exception as exc:
                 logger.error("FAILED %s: %s", code, exc, exc_info=True)

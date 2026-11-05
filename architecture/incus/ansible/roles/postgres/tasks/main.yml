@@ -36,3 +36,67 @@
     name: cat_hydroc_{{ item }}
     owner: user_hydroc_{{ item }}
   loop: "{{ ducklake_layers }}"
+
+# ---------------------------------------------------------------------------
+# Serving layer (Metabase)
+#   hydroc_serve  owned by user_hydroc_serve: the DuckDB server writes the
+#                 copies of the Library latest views into schema latest
+#   metabase      Metabase's application database, owned by user_metabase,
+#                 who may only read hydroc_serve.latest
+# ---------------------------------------------------------------------------
+
+- name: Allow the serving users from their hosts only
+  community.postgresql.postgresql_pg_hba:
+    dest: /etc/postgresql/{{ postgres_version }}/main/pg_hba.conf
+    contype: host
+    databases: "{{ item.databases }}"
+    users: "{{ item.user }}"
+    source: "{{ instance_ips[item.host] }}/32"
+    method: scram-sha-256
+  loop:
+    - { databases: hydroc_serve, user: user_hydroc_serve, host: hydroc-duckdb }
+    - { databases: "metabase,hydroc_serve", user: user_metabase, host: hydroc-metabase }
+  notify: Reload postgresql
+
+- name: Create serving users
+  become: true
+  become_user: postgres
+  community.postgresql.postgresql_user:
+    name: "{{ item.name }}"
+    password: "{{ item.password }}"
+  loop:
+    - { name: user_hydroc_serve, password: "{{ vault_pg_passwords.serve }}" }
+    - { name: user_metabase, password: "{{ vault_pg_passwords.metabase }}" }
+  no_log: true
+
+- name: Create serving databases
+  become: true
+  become_user: postgres
+  community.postgresql.postgresql_db:
+    name: "{{ item.name }}"
+    owner: "{{ item.owner }}"
+  loop:
+    - { name: hydroc_serve, owner: user_hydroc_serve }
+    - { name: metabase, owner: user_metabase }
+
+- name: Create schema latest in hydroc_serve
+  become: true
+  become_user: postgres
+  community.postgresql.postgresql_schema:
+    db: hydroc_serve
+    name: latest
+    owner: user_hydroc_serve
+
+# The serve scripts drop and recreate every table: grant on future tables too
+- name: Metabase may read hydroc_serve.latest only
+  become: true
+  become_user: postgres
+  community.postgresql.postgresql_query:
+    db: hydroc_serve
+    query: |
+      REVOKE ALL ON SCHEMA public FROM PUBLIC;
+      GRANT USAGE ON SCHEMA latest TO user_metabase;
+      ALTER DEFAULT PRIVILEGES FOR ROLE user_hydroc_serve IN SCHEMA latest
+          GRANT SELECT ON TABLES TO user_metabase;
+      GRANT SELECT ON ALL TABLES IN SCHEMA latest TO user_metabase;
+  changed_when: false

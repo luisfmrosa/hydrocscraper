@@ -20,7 +20,7 @@ resource "incus_network" "hydroc" {
 
 resource "incus_project" "hydroc" {
   name        = var.project
-  description = "hydrocscraper: DuckLake stack (Postgres catalog, DuckDB quack server, app)"
+  description = "hydrocscraper: DuckLake stack (Postgres catalog, DuckDB quack server, app, Metabase)"
 
   config = {
     "features.images"            = "false"
@@ -101,6 +101,18 @@ resource "incus_instance" "node" {
       properties = {
         listen  = "tcp:0.0.0.0:${var.expose_quack_port}"
         connect = "tcp:127.0.0.1:${var.quack_port}"
+      }
+    }
+  }
+
+  dynamic "device" {
+    for_each = each.key == "hydroc-metabase" && var.expose_metabase_port > 0 ? [1] : []
+    content {
+      name = "metabase"
+      type = "proxy"
+      properties = {
+        listen  = "tcp:0.0.0.0:${var.expose_metabase_port}"
+        connect = "tcp:127.0.0.1:${var.metabase_port}"
       }
     }
   }
