@@ -60,25 +60,40 @@ services:
       PG_PASSWORD_LIBRARY: ${PG_PASSWORD_LIBRARY:?set PG_PASSWORD_LIBRARY in .env}
       PG_PASSWORD_DWH: ${PG_PASSWORD_DWH:?set PG_PASSWORD_DWH in .env}
       PG_PASSWORD_HOOK: ${PG_PASSWORD_HOOK:?set PG_PASSWORD_HOOK in .env}
-      PG_PASSWORD_SERVE: ${PG_PASSWORD_SERVE:?set PG_PASSWORD_SERVE in .env}
-      PG_PASSWORD_METABASE: ${PG_PASSWORD_METABASE:?set PG_PASSWORD_METABASE in .env}
     volumes:
       - pg-data:/var/lib/postgresql/data
-      # Run on first start only (empty data volume). 20-serve.sh is idempotent:
-      # on an older volume, run it once with `docker compose exec postgres sh
-      # /docker-entrypoint-initdb.d/20-serve.sh`
+      # Runs on first start only (empty data volume)
       - ./postgres/init-catalogs.sh:/docker-entrypoint-initdb.d/10-catalogs.sh:ro
-      - ./postgres/init-serve.sh:/docker-entrypoint-initdb.d/20-serve.sh:ro
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "postgres"]
       interval: 5s
       retries: 20
+
+  # One-shot, on every `up`: the serving database hydroc_serve and Metabase's
+  # database metabase (idempotent). Unlike the initdb scripts it also runs on
+  # an existing data volume, so `up` adds Metabase to an existing stack.
+  postgres-serve-init:
+    image: postgres:15
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGUSER: postgres
+      PGPASSWORD: ${PG_SUPERUSER_PASSWORD}
+      PG_PASSWORD_SERVE: ${PG_PASSWORD_SERVE:?set PG_PASSWORD_SERVE in .env}
+      PG_PASSWORD_METABASE: ${PG_PASSWORD_METABASE:?set PG_PASSWORD_METABASE in .env}
+    volumes:
+      - ./postgres/init-serve.sh:/init-serve.sh:ro
+    entrypoint: ["sh", "/init-serve.sh"]
 
   duckdb:
     build: ./duckdb
     depends_on:
       postgres:
         condition: service_healthy
+      postgres-serve-init:
+        condition: service_completed_successfully
       rustfs-init:
         condition: service_completed_successfully
     environment:
@@ -110,8 +125,8 @@ services:
   metabase:
     image: metabase/metabase:${METABASE_VERSION:-v0.65.3.3}
     depends_on:
-      postgres:
-        condition: service_healthy
+      postgres-serve-init:
+        condition: service_completed_successfully
     environment:
       MB_DB_TYPE: postgres
       MB_DB_HOST: postgres

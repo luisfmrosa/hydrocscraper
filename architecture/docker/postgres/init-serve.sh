@@ -4,14 +4,14 @@
 #                 copies of the Library latest views into schema latest)
 #   metabase      Metabase's application database, owned by user_metabase,
 #                 who may only read hydroc_serve.latest
-# Runs on first start (empty data volume). Idempotent, so an existing volume
-# can be upgraded with:
-#   docker compose exec postgres sh /docker-entrypoint-initdb.d/20-serve.sh
+# Run by the one-shot postgres-serve-init service on every `docker compose up`
+# (PGHOST/PGUSER/PGPASSWORD from compose.yaml), on new and existing volumes
+# alike, so it must stay idempotent.
 set -eu
 
 : "${PG_PASSWORD_SERVE:?}" "${PG_PASSWORD_METABASE:?}"
 
-psql -v ON_ERROR_STOP=1 --username "${POSTGRES_USER:-postgres}" --dbname postgres \
+psql -v ON_ERROR_STOP=1 --dbname postgres \
     -v pw_serve="$PG_PASSWORD_SERVE" -v pw_mb="$PG_PASSWORD_METABASE" <<'SQL'
 SELECT format('CREATE USER %I', u)
 FROM unnest(ARRAY['user_hydroc_serve', 'user_metabase']) AS u
@@ -24,7 +24,7 @@ FROM (VALUES ('hydroc_serve', 'user_hydroc_serve'), ('metabase', 'user_metabase'
 WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = d) \gexec
 SQL
 
-psql -v ON_ERROR_STOP=1 --username "${POSTGRES_USER:-postgres}" --dbname hydroc_serve <<'SQL'
+psql -v ON_ERROR_STOP=1 --dbname hydroc_serve <<'SQL'
 CREATE SCHEMA IF NOT EXISTS latest AUTHORIZATION user_hydroc_serve;
 REVOKE ALL ON SCHEMA public FROM PUBLIC;
 GRANT USAGE ON SCHEMA latest TO user_metabase;

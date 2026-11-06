@@ -58,14 +58,15 @@ docker compose run --rm app python main.py --mode full     # load Sodir; refresh
 ```
 
 - Metabase: http://127.0.0.1:3000. Sign in with `MB_ADMIN_EMAIL` / `MB_ADMIN_PASSWORD` and open *hydroc → Sodir - Norwegian shelf production*.
-- `metabase-init` runs `provision.py` on every `up` and exits with code 0. To re-run it by hand: `docker compose run --rm metabase-init`.
-- **Upgrading an existing stack** (Postgres volume created before this change): create the serving databases once, restart DuckDB so it attaches `serve`, then fill the copies:
+- Metabase is part of the same Compose project (`hydroc`) as the rest of the stack, with two one-shot helpers that run on every `up` and exit 0:
+  - `postgres-serve-init` creates `hydroc_serve`, `metabase`, their users and grants (idempotent, `postgres/init-serve.sh`). Both `duckdb` and `metabase` wait for it.
+  - `metabase-init` runs `provision.py`. To re-run it by hand: `docker compose run --rm metabase-init`.
+- **Adding Metabase to an existing stack** (data volumes created before this change): add the four new values to `.env`, then:
   ```bash
-  docker compose up -d postgres
-  docker compose exec postgres sh /docker-entrypoint-initdb.d/20-serve.sh
-  docker compose up -d --build          # duckdb restarts, metabase + metabase-init start
-  docker compose run --rm app python main.py --mode serve
+  docker compose up -d --build                             # creates the serving databases, recreates duckdb (attaches serve), starts metabase
+  docker compose run --rm app python main.py --mode serve  # fill the copies from the current Library
   ```
+  Existing buckets, catalogs and Lake data are kept.
 - Metabase version: `METABASE_VERSION` in `.env` (default `v0.65.3.3` in `compose.yaml`).
 
 ## Deploy on Incus

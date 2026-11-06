@@ -335,7 +335,7 @@ Ansible reads the bucket keys from `tofu output -json`, and the passwords and qu
 
 ### Docker (`architecture/docker/`)
 
-`compose.yaml` runs `rustfs` (S3 API with a web console), a one-shot `rustfs-init` that creates the buckets, `postgres` (catalog databases created by `postgres/init-catalogs.sh`), `duckdb` (the pinned 2.0 CLI, which mounts `sql/ddl` and renders `secrets.sql` from the environment in `entrypoint.sh`) and `metabase` with a one-shot `metabase-init` that provisions its dashboard, and `app` (run on demand). Credentials come from `architecture/docker/.env`, which is git-ignored.
+`compose.yaml` runs `rustfs` (S3 API with a web console), a one-shot `rustfs-init` that creates the buckets, `postgres` (catalog databases created by `postgres/init-catalogs.sh`), `duckdb` (the pinned 2.0 CLI, which mounts `sql/ddl` and renders `secrets.sql` from the environment in `entrypoint.sh`) and `postgres-serve-init` (one-shot: serving databases), `metabase` with a one-shot `metabase-init` that provisions its dashboard, and `app` (run on demand). Credentials come from `architecture/docker/.env`, which is git-ignored.
 
 ---
 
