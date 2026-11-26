@@ -19,7 +19,9 @@ import pytest
 import sodir_tableview as st
 from scrapers import base
 from scrapers.no_sodir.field_description import NoSodirFieldDescription
+from library_dbt import library_models
 from storage import lake, std
+from storage.library import models as library_files
 from test_lake import DDL
 
 DATASET = "field_description"
@@ -84,9 +86,7 @@ def test_scripts_resolve():
         "sql/ddl/lake/no_sodir_field_description.sql",
         "sql/lake/no_sodir/field_description_full.sql",
     ]
-    assert [p.name for p in lake.library_scripts("no_sodir", DATASET)] == [
-        "no_sodir_field_description.sql", "no_sodir_field_description_dev.sql",
-    ]
+    assert [p.stem for p in library_files("no_sodir", DATASET)] == library_models(DATASET)
 
 
 def test_std_types_and_text(con):

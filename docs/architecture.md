@@ -181,9 +181,8 @@ Everything after that is static SQL run on the DuckDB server:
 | `sql/ddl/lake/<code>.sql` | Lake schema and table `lake.<source>.<table>` (`IF NOT EXISTS`) |
 | `sql/lake/<source>/<table>_full.sql` | Full load |
 | `sql/lake/<source>/<table>_incremental.sql` | Incremental load |
-| `sql/ddl/library/<code>[_dev].sql` | Library frame and latest views of a Lake table, production or development (`CREATE OR REPLACE`) |
 
-The server runs the view and Lake table scripts at startup. The app's runners (`storage/std.py`, `storage/lake.py`, no logic) re-run the raw view before the Std script, the std view and Lake table before each load, and the table's Library views after it, so a new dataset or a first download needs no server restart.
+The server runs the view and Lake table scripts at startup. The app's runners (`storage/std.py`, `storage/lake.py`, no logic) re-run the raw view before the Std script and the std view and Lake table before each load, so a new dataset or a first download needs no server restart. After each load, `storage/lake.py` builds the table's Library views with dbt (see *Library views*).
 
 ### Raw view columns
 
@@ -228,7 +227,7 @@ One schema per source, one append-only table per Std table. The Lake holds only 
 
 ### Library views
 
-Each Lake table can have a frame and a latest view, in development and/or production mode, both defined in `sql/ddl/library/<code>[_dev].sql` (project skill `add-frame`):
+Each Lake table with hooks has a frame and a latest view in development and in production mode: four dbt models in `transform/models/library/<code>/` (see *dbt* below; project skill `add-frame`). The models only call the macros of `transform/macros/library.sql`, which generate the SQL from `hook.metadata.hooks` and `hook.metadata.datasets` (hook columns, key sets, encodings, `keys` for the SCD2 window), so `hooks.csv` and `datasets.csv` stay the only definitions:
 
 | | Development | Production |
 |---|---|---|
@@ -259,7 +258,17 @@ Production encodings, unsigned and big-endian so the hex reads like the number (
 
 **Open end: `infinity`, not `9999-12-31`.** A `TIMESTAMPTZ` literal without an offset is read in the session's time zone, so `TIMESTAMPTZ '9999-12-31'` is a different moment on the server (UTC) and on a client in another zone, and a client's `WHERE ___Effective_To = TIMESTAMPTZ '9999-12-31'` would match nothing. `infinity` has no time zone: query open versions with `___Effective_To = 'infinity'::TIMESTAMPTZ` or `NOT isfinite(___Effective_To)`. Outside SQL it renders oddly (Python `datetime(9999, 12, 31, 23, 59, 59, 999999)` without a zone, pandas `294247-01-10 …`).
 
-The views read the Lake across catalogs (`lake.<source>.<table>` from the `library` DuckLake), which works because every catalog is attached under a fixed alias. A view fails at server start while its Lake table doesn't exist; `storage/lake.py` re-runs the table's Library scripts after every Lake load.
+The views read the Lake across catalogs (`lake.<source>.<table>` from the `library` DuckLake), which works because every catalog is attached under a fixed alias. `storage/lake.py` builds the table's models after every Lake load; DuckLake keeps the views across server restarts. After a change to `hooks.csv` (or a dataset's `keys`), restart the server so `hook.metadata.*` follows it, then rebuild the views: `python -m storage.library run`.
+
+### dbt
+
+The Library is a dbt project, `transform/` (`dbt-core` 1.11, `dbt-duckdb` 1.11.1, pinned in `requirements.txt`; see `transform/README.md`). Everything else from Raw on stays static SQL: the Std step runs once per Raw file, driven by the watermarks, which doesn't fit a dbt model, and the Lake loads may follow later. The DWH is meant to be built as dbt models too.
+
+- **Over quack.** dbt-duckdb has no quack support: it opens a local in-memory database and gives each thread a cursor of its own. The plugin `storage/dbt_quack.py` runs `CONNECT` on every cursor, so every statement runs on the server, as with `storage/duck.py`, and the client needs no catalog credentials. `transform/profiles.yml` reads `HYDROC_QUACK_URL`, `HYDROC_QUACK_TOKEN` and `HYDROC_QUACK_DISABLE_SSL`.
+- **DuckLake.** dbt-duckdb only recognises DuckLakes it attaches itself; ours are attached by the server, so it would replace a view with `DROP … CASCADE`, which DuckLake rejects. `transform/macros/drop_relation.sql` drops without `CASCADE`. `tests/test_library_dbt.py` builds every model twice on a DuckLake.
+- **No seeds.** `dbt seed` sends `COPY … FROM '<client path>'`, which runs on the server, where the path doesn't exist. Static metadata stays in `45_hook_static.sql`; models read it as `hook.metadata.*`.
+- **Compiling needs the server:** the Library macros query `hook.metadata` (`run_query`).
+- **Tests** build the models with the real project: the test's local DuckDB serves quack on localhost and dbt connects to it (`tests/library_dbt.py`).
 
 ---
 
@@ -358,12 +367,15 @@ hydrocscraper/
 │   ├── std.py              # runs a dataset's Std SQL (Raw -> Std)
 │   ├── duck.py             # quack client
 │   ├── lake.py             # runs a table's Lake SQL (Std -> Lake), then its Library views
+│   ├── library.py          # builds Library views with dbt (transform/)
+│   ├── dbt_quack.py        # dbt-duckdb plugin: runs dbt on the quack server
 │   └── watermark.py        # hook.metadata.watermark read/write
 ├── utils/
 │   └── http.py             # HTTP client, retries
 ├── sql/ddl/                # DuckDB server startup script and DDL (raw/std views, Lake tables)
 ├── sql/std/                # Std scripts (Raw -> Std), per source and dataset
 ├── sql/lake/               # Lake load scripts, per source and table
+├── transform/              # dbt project: Library views (macros generate them from hook.metadata)
 ├── data/static/            # static Hook metadata (CSV)
 ├── architecture/
 │   ├── incus/

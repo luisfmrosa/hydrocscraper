@@ -17,7 +17,9 @@ from scrapers import base
 from scrapers.no_sodir._tableview import _period
 from scrapers.no_sodir.field import NoSodirField
 import sodir_tableview as st
+from library_dbt import library_models
 from storage import lake, std
+from storage.library import models as library_files
 from test_lake import DDL
 
 HEADER = (
@@ -95,9 +97,7 @@ def test_scripts_resolve():
         "sql/ddl/lake/no_sodir_field.sql",
         "sql/lake/no_sodir/field_full.sql",
     ]
-    assert [p.name for p in lake.library_scripts("no_sodir", "field")] == [
-        "no_sodir_field.sql", "no_sodir_field_dev.sql",
-    ]
+    assert [p.stem for p in library_files("no_sodir", "field")] == library_models("field")
 
 
 def test_std_types_dates_and_nulls(con):
