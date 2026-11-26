@@ -75,4 +75,4 @@ Keep the existing rows and their order; ids are never reused or renumbered.
 
 ## Report
 
-Tell the user the new hook's `id`, expressions, encoding, role, `key_set`, `key_set_binary` and `hook_column`, and any business concept added (with its domain). The dataset's frame views don't pick the hook up by themselves (they are static SQL): if the dataset has frames (`sql/ddl/library/<code>[_dev].sql`), offer to update them with the `add-frame` skill; otherwise offer to create them.
+Tell the user the new hook's `id`, expressions, encoding, role, `key_set`, `key_set_binary` and `hook_column`, and any business concept added (with its domain). The dataset's frame views are generated from `hook.metadata.hooks` (dbt, `transform/`): if the dataset has frames (`transform/models/library/<code>/`), they pick the hook up once the server is restarted (to rebuild `hook.metadata.hooks`) and the views are rebuilt (`python -m storage.library run --select path:models/library/<code>`, or the next Lake load); say so. Otherwise offer to create them with the `add-frame` skill.

@@ -39,20 +39,7 @@
 .read std_views/024_no_sodir_field_description.sql
 .read std_views/025_no_sodir_field_operator_hst.sql
 
--- Library frame and latest views, one script per Lake table and mode
--- (<code>.sql production, <code>_dev.sql development). They fail until the
--- Lake table exists; the app re-runs them after every Lake load.
-.read library/no_sodir_field_production_monthly.sql
-.read library/no_sodir_field_production_monthly_dev.sql
-.read library/no_sodir_field.sql
-.read library/no_sodir_field_dev.sql
-.read library/no_sodir_company.sql
-.read library/no_sodir_company_dev.sql
-.read library/no_sodir_company_reserves.sql
-.read library/no_sodir_company_reserves_dev.sql
-.read library/no_sodir_field_description.sql
-.read library/no_sodir_field_description_dev.sql
-.read library/no_sodir_field_operator_hst.sql
-.read library/no_sodir_field_operator_hst_dev.sql
+-- Library views (library.frame.*, library.latest.*) are built by dbt
+-- (transform/), after each Lake load; DuckLake keeps them across restarts.
 
 .read 99_serve.sql

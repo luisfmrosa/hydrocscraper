@@ -1,13 +1,15 @@
 """Shared setup for the tests of the Sodir table view datasets (snapshot CSVs):
 write snapshots like Sodir's export, then run the dataset's real SQL files
-(raw view, Std script, std view, Lake DDL and loads, Library views) on a local
-DuckDB, with s3://hydroc-raw/ and s3://hydroc-std/ pointed at local folders.
+(raw view, Std script, std view, Lake DDL and loads) on a local DuckDB, with
+s3://hydroc-raw/ and s3://hydroc-std/ pointed at local folders, and the Library
+views with dbt (tests/library_dbt.py).
 """
 
 from pathlib import Path
 
 import duckdb
 
+import library_dbt
 from storage import lake, std
 from test_lake import DDL, Env, run
 
@@ -50,6 +52,7 @@ def build(tmp_path_factory, dataset: str, files: dict[str, bytes]) -> Env:
         con.execute(f"ATTACH ':memory:' AS {layer}")
     for path in (DDL / "20_library.sql", DDL / "40_hook.sql", DDL / "41_hook_watermark.sql"):
         run(con, path)
+    library_dbt.hook_static(con)
     for key, data in files.items():
         write_raw(con, key, data)
     run(con, std.std_scripts("no_sodir", dataset)[0])
@@ -66,8 +69,7 @@ def load(con: Env, dataset: str, mode: str) -> int:
 
 
 def library(con: Env, dataset: str) -> None:
-    for path in lake.library_scripts("no_sodir", dataset):
-        run(con, path)
+    library_dbt.build(con, "no_sodir", dataset)
 
 
 def lake_rows(con: Env, dataset: str) -> list[tuple]:

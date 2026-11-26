@@ -17,7 +17,9 @@ import pytest
 import sodir_tableview as st
 from scrapers import base
 from scrapers.no_sodir.company import NoSodirCompany
+from library_dbt import library_models
 from storage import lake, std
+from storage.library import models as library_files
 from test_lake import DDL
 
 DATASET = "company"
@@ -83,9 +85,7 @@ def test_scripts_resolve():
         "sql/ddl/lake/no_sodir_company.sql",
         "sql/lake/no_sodir/company_full.sql",
     ]
-    assert [p.name for p in lake.library_scripts("no_sodir", DATASET)] == [
-        "no_sodir_company.sql", "no_sodir_company_dev.sql",
-    ]
+    assert [p.stem for p in library_files("no_sodir", DATASET)] == library_models(DATASET)
 
 
 def test_std_types_flags_and_blank_org_number(con):

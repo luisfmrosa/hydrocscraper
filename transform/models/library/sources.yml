@@ -1,0 +1,14 @@
+version: 2
+
+# Lake tables the Library frames read (one frame per table, no joins).
+sources:
+  - name: no_sodir
+    database: lake
+    schema: no_sodir
+    tables:
+      - name: field_production_monthly
+      - name: field
+      - name: company
+      - name: company_reserves
+      - name: field_description
+      - name: field_operator_hst

@@ -1,4 +1,5 @@
-"""The Sodir Library frame and latest views (development) on a local DuckDB, over
+"""The Sodir Library frame and latest views, built by dbt (tests/library_dbt.py)
+on a local DuckDB, over
 the Lake built by the full load of tests/test_lake.py's snapshots:
 
   F1 (Jan): EKOFISK 1.0, TROLL 2.0, GULLFAKS 3.0
@@ -10,7 +11,9 @@ from datetime import datetime, timezone
 
 import pytest
 
-from storage import lake
+import library_dbt
+from library_dbt import library_models
+from storage.library import models as library_files
 from test_lake import DDL, con, load, raw, run  # noqa: F401  (fixtures)
 
 FRAME = "library.frame.no_sodir_field_production_monthly_dev"
@@ -23,9 +26,9 @@ OPEN = None  # versions() reports an open ___Effective_To ('infinity') as None
 def lib(con):  # noqa: F811
     con.execute("ATTACH ':memory:' AS library")
     run(con, DDL / "20_library.sql")
+    library_dbt.hook_static(con)
     load(con, "full")
-    for path in lake.library_scripts("no_sodir", "field_production_monthly"):
-        run(con, path)
+    library_dbt.build(con, "no_sodir", "field_production_monthly")
     return con
 
 
@@ -39,11 +42,8 @@ def versions(con, field):
     ).fetchall()
 
 
-def test_library_scripts_resolve():
-    assert [p.name for p in lake.library_scripts("no_sodir", "field_production_monthly")] == [
-        "no_sodir_field_production_monthly.sql",
-        "no_sodir_field_production_monthly_dev.sql",
-    ]
+def test_library_models_resolve():
+    assert [p.stem for p in library_files("no_sodir", "field_production_monthly")] == library_models("field_production_monthly")
 
 
 def test_frame_has_one_version_per_lake_row(lib):

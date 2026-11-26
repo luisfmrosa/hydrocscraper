@@ -32,11 +32,14 @@ docker compose run --rm app python main.py --mode incremental
 
 `full` stores a new Raw file, rebuilds Std (`hydroc-std`) from every Raw file and rebuilds the Lake table (`lake.no_sodir.field_production_monthly`); `incremental` converts and loads a new file's changes only. The app creates a missing raw view, std view or Lake table itself.
 
-After editing `data/static/*.csv`, restart the server so it rebuilds `hook.metadata.*`:
+After each Lake load the app builds the table's Library views with dbt (`transform/`). After editing `data/static/*.csv`, restart the server so it rebuilds `hook.metadata.*`, then rebuild the Library views so they follow the hooks:
 
 ```bash
 docker compose restart duckdb
+docker compose run --rm app python -m storage.library run
 ```
+
+The app image installs `requirements.txt` (dbt included): rebuild it after a change, `docker compose build app`.
 
 ## Inspect
 

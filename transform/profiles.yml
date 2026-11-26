@@ -1,0 +1,18 @@
+# Everything runs on the quack server: the local database is only a client.
+# Values come from the app's environment (.env, see .env.example).
+hydroc:
+  target: quack
+  outputs:
+    quack:
+      type: duckdb
+      path: ":memory:"
+      database: memory
+      schema: main
+      threads: 1
+      extensions: [quack]
+      plugins:
+        - module: storage.dbt_quack
+          config:
+            url: "{{ env_var('HYDROC_QUACK_URL') }}"
+            token: "{{ env_var('HYDROC_QUACK_TOKEN') }}"
+            disable_ssl: "{{ env_var('HYDROC_QUACK_DISABLE_SSL', 'false') }}"

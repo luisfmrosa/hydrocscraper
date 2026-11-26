@@ -2,7 +2,6 @@
 temporary folder standing in for /opt/duckdb/static, and s3://hydroc-raw/ is
 pointed at another one."""
 
-import re
 import shutil
 from pathlib import Path
 
@@ -78,19 +77,21 @@ def test_hooks_derive_key_sets(static, tmp_path):
     ]
 
 
-def test_library_scripts_use_the_hook_columns(static, tmp_path):
-    # every frame script of a hooked dataset has exactly its hooks' columns, in id order
+def test_every_hooked_dataset_has_library_models(static, tmp_path):
+    # the frames take their hook columns from hook.metadata.hooks
+    # (transform/macros/library.sql); every hooked dataset needs its models
+    from library_dbt import library_models
+    from storage.library import models as library_files
+
     con = load(static, tmp_path)
-    hooks = con.execute(
-        "SELECT d.code, list(h.hook_column ORDER BY h.id) FROM hook.metadata.hooks h "
-        "JOIN hook.metadata.datasets d ON d.id = h.dataset_id GROUP BY d.code"
+    tables = con.execute(
+        "SELECT DISTINCT s.code, d.code[length(s.code) + 2:] FROM hook.metadata.hooks h "
+        "JOIN hook.metadata.datasets d ON d.id = h.dataset_id "
+        "JOIN hook.metadata.sources s ON s.id = d.source_id ORDER BY ALL"
     ).fetchall()
-    library = ROOT / "sql" / "ddl" / "library"
-    for code, columns in hooks:
-        scripts = [p for p in (library / f"{code}.sql", library / f"{code}_dev.sql") if p.exists()]
-        for script in scripts:
-            found = re.findall(r"\bAS (HK_\w+)", script.read_text(encoding="utf-8"))
-            assert found == columns, script.name
+    assert tables
+    for source, table in tables:
+        assert [p.stem for p in library_files(source, table)] == library_models(table, source), table
 
 
 def test_business_domains_and_concepts(static, tmp_path):

@@ -1,0 +1,24 @@
+# dbt project for the Library layer (and, later, the DWH), run on the DuckDB
+# quack server through storage/dbt_quack.py. See transform/README.md.
+name: hydroc
+version: "1.0"
+config-version: 2
+profile: hydroc
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+target-path: target
+log-path: logs
+clean-targets: [target, logs]
+
+models:
+  hydroc:
+    library:
+      # frame_<code>[_dev] -> library.frame.<code>[_dev]
+      # latest_<code>[_dev] -> library.latest.<code>[_dev]
+      # (schema and alias from the prefix: macros/naming.sql)
+      +database: library
+      +materialized: view
+
+flags:
+  send_anonymous_usage_stats: false
